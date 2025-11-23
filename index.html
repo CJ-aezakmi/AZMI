@@ -1,0 +1,378 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AEZAKMI Antidetect Pro v2.0</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="app">
+        <!-- Sidebar -->
+        <aside class="sidebar">
+            <div class="sidebar-header">
+                <div class="logo">
+                    <div class="logo-icon">A</div>
+                    <div class="logo-text">
+                        <div class="logo-title">AEZAKMI Pro</div>
+                        <div class="logo-version">v2.0</div>
+                    </div>
+                </div>
+            </div>
+            
+            <nav class="sidebar-nav">
+                <div class="nav-item active" data-view="profiles">
+                    <div class="nav-icon">👤</div>
+                    <div class="nav-text">
+                        <div class="nav-title">Все профили</div>
+                        <div class="nav-count" id="profileCount">0</div>
+                    </div>
+                </div>
+                
+                <div class="nav-item" data-view="folders">
+                    <div class="nav-icon">📁</div>
+                    <div class="nav-text">
+                        <div class="nav-title">Папки</div>
+                    </div>
+                </div>
+                
+                <div class="nav-item" data-view="proxies">
+                    <div class="nav-icon">🌐</div>
+                    <div class="nav-text">
+                        <div class="nav-title">Прокси</div>
+                        <div class="nav-count" id="proxyCount">0</div>
+                    </div>
+                </div>
+                
+                <div class="nav-item" data-view="extensions">
+                    <div class="nav-icon">🧩</div>
+                    <div class="nav-text">
+                        <div class="nav-title">Расширения</div>
+                    </div>
+                </div>
+                
+                <div class="nav-item" data-view="statistics">
+                    <div class="nav-icon">📊</div>
+                    <div class="nav-text">
+                        <div class="nav-title">Статистика</div>
+                    </div>
+                </div>
+                
+                <div class="nav-item" data-view="settings">
+                    <div class="nav-icon">⚙️</div>
+                    <div class="nav-text">
+                        <div class="nav-title">Настройки</div>
+                    </div>
+                </div>
+            </nav>
+            
+            <div class="sidebar-footer">
+                <button class="btn btn-primary btn-block" id="createProfileBtn">
+                    + Создать профиль
+                </button>
+            </div>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <!-- Profiles View -->
+            <div id="profilesView" class="view">
+                <div class="view-header">
+                    <h1>Управление профилями</h1>
+                    <div class="view-actions">
+                        <div class="search-box">
+                            <input type="text" id="searchInput" placeholder="Поиск профилей...">
+                        </div>
+                        <div class="bulk-actions">
+                            <span class="selected-info">Выбрано: <span id="selectedCount">0</span></span>
+                            <button class="btn btn-secondary" id="selectAllBtn">Выбрать все</button>
+                            <button class="btn btn-primary" id="startSelectedBtn">Запустить</button>
+                            <button class="btn btn-danger" id="deleteSelectedBtn">Удалить</button>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="profiles-grid" id="profilesContainer">
+                    <!-- Profiles will be rendered here -->
+                </div>
+            </div>
+
+            <!-- Proxies View -->
+            <div id="proxiesView" class="view hidden">
+                <div class="view-header">
+                    <h1>Управление прокси</h1>
+                    <div class="view-actions">
+                        <button class="btn btn-secondary" id="testAllProxiesBtn">Проверить все</button>
+                        <button class="btn btn-primary" id="addProxiesBtn">Добавить прокси</button>
+                    </div>
+                </div>
+                
+                <div class="proxy-input-section">
+                    <div class="input-group">
+                        <label>Добавление прокси (поддерживаемые форматы):</label>
+                        <textarea id="proxyInput" placeholder="protocol://username:password@host:port&#10;host:port:username:password&#10;host:port&#10;&#10;Пример:&#10;socks5://user:pass@127.0.0.1:1080&#10;192.168.1.1:8080:admin:password&#10;proxy.example.com:3128"></textarea>
+                        <div class="input-help">
+                            Поддерживаемые форматы: http, https, socks4, socks5<br>
+                            Вставьте прокси по одному на строку
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="proxies-list" id="proxiesContainer">
+                    <!-- Proxies will be rendered here -->
+                </div>
+            </div>
+
+            <!-- Other Views (Placeholders for now) -->
+            <div id="foldersView" class="view hidden">
+                <div class="view-header">
+                    <h1>Папки</h1>
+                </div>
+                <div class="coming-soon">
+                    <div class="coming-soon-icon">📁</div>
+                    <h3>Организация профилей по папкам</h3>
+                    <p>Функция будет добавлена в следующем обновлении</p>
+                </div>
+            </div>
+
+            <div id="extensionsView" class="view hidden">
+                <div class="view-header">
+                    <h1>Расширения</h1>
+                </div>
+                <div class="coming-soon">
+                    <div class="coming-soon-icon">🧩</div>
+                    <h3>Управление расширениями браузера</h3>
+                    <p>Функция будет добавлена в следующем обновлении</p>
+                </div>
+            </div>
+
+            <div id="statisticsView" class="view hidden">
+                <div class="view-header">
+                    <h1>Статистика</h1>
+                </div>
+                <div class="coming-soon">
+                    <div class="coming-soon-icon">📊</div>
+                    <h3>Статистика использования профилей</h3>
+                    <p>Функция будет добавлена в следующем обновлении</p>
+                </div>
+            </div>
+
+            <div id="settingsView" class="view hidden">
+                <div class="view-header">
+                    <h1>Настройки</h1>
+                </div>
+                <div class="coming-soon">
+                    <div class="coming-soon-icon">⚙️</div>
+                    <h3>Настройки приложения</h3>
+                    <p>Функция будет добавлена в следующем обновлении</p>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Profile Modal -->
+    <div id="profileModal" class="modal hidden">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 id="profileModalTitle">Создать новый профиль</h2>
+                <button class="modal-close" onclick="app.hideModal('profileModal')">×</button>
+            </div>
+            
+            <div class="modal-body">
+                <div class="tabs">
+                    <button class="tab-button active" data-tab="basic">Основные</button>
+                    <button class="tab-button" data-tab="browser">Браузер</button>
+                    <button class="tab-button" data-tab="proxy">Прокси</button>
+                    <button class="tab-button" data-tab="additional">Дополнительно</button>
+                </div>
+                
+                <form id="profileForm">
+                    <input type="hidden" id="profileId">
+                    
+                    <!-- Basic Tab -->
+                    <div id="basicTab" class="tab-content">
+                        <div class="form-group">
+                            <label for="profileName">Название профиля *</label>
+                            <input type="text" id="profileName" required>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="profileNotes">Заметки</label>
+                            <textarea id="profileNotes" rows="3"></textarea>
+                        </div>
+                    </div>
+                    
+                    <!-- Browser Tab -->
+                    <div id="browserTab" class="tab-content hidden">
+                        <div class="form-group">
+                            <label for="userAgent">User Agent</label>
+                            <select id="userAgent">
+                                <option value="auto">Автоматический</option>
+                                <option value="chrome_win">Chrome Windows</option>
+                                <option value="chrome_mac">Chrome macOS</option>
+                                <option value="firefox_win">Firefox Windows</option>
+                                <option value="firefox_mac">Firefox macOS</option>
+                                <option value="safari_mac">Safari macOS</option>
+                            </select>
+                        </div>
+                        
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="screenWidth">Ширина экрана</label>
+                                <input type="number" id="screenWidth" value="1920" min="800" max="3840">
+                            </div>
+                            <div class="form-group">
+                                <label for="screenHeight">Высота экрана</label>
+                                <input type="number" id="screenHeight" value="1080" min="600" max="2160">
+                            </div>
+                        </div>
+                        
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="language">Язык</label>
+                                <select id="language">
+                                    <option value="ru-RU">Русский</option>
+                                    <option value="en-US">English (US)</option>
+                                    <option value="en-GB">English (UK)</option>
+                                    <option value="de-DE">Deutsch</option>
+                                    <option value="fr-FR">Français</option>
+                                    <option value="es-ES">Español</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label for="timezone">Часовой пояс</label>
+                                <select id="timezone">
+                                    <option value="Europe/Moscow">Москва (UTC+3)</option>
+                                    <option value="Europe/London">Лондон (UTC+0)</option>
+                                    <option value="America/New_York">Нью-Йорк (UTC-5)</option>
+                                    <option value="America/Los_Angeles">Лос-Анджелес (UTC-8)</option>
+                                    <option value="Asia/Tokyo">Токио (UTC+9)</option>
+                                    <option value="Asia/Shanghai">Шанхай (UTC+8)</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Proxy Tab -->
+                    <div id="proxyTab" class="tab-content hidden">
+                        <div class="form-group">
+                            <label class="checkbox-label">
+                                <input type="checkbox" id="proxyEnabled">
+                                Использовать прокси
+                            </label>
+                        </div>
+                        
+                        <div id="proxySettings" class="proxy-settings">
+                            <div class="form-group">
+                                <label>Быстрый ввод прокси</label>
+                                <input type="text" id="quickProxyInput" placeholder="socks5://username:password@127.0.0.1:1080">
+                                <div class="input-help">Вставьте прокси в любом поддерживаемом формате</div>
+                            </div>
+                            
+                            <div class="form-separator">или заполните поля ниже</div>
+                            
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label for="proxyType">Тип</label>
+                                    <select id="proxyType">
+                                        <option value="http">HTTP</option>
+                                        <option value="https">HTTPS</option>
+                                        <option value="socks4">SOCKS4</option>
+                                        <option value="socks5">SOCKS5</option>
+                                    </select>
+                                </div>
+                                <div class="form-group">
+                                    <label for="proxyHost">Хост</label>
+                                    <input type="text" id="proxyHost" placeholder="127.0.0.1">
+                                </div>
+                                <div class="form-group">
+                                    <label for="proxyPort">Порт</label>
+                                    <input type="number" id="proxyPort" placeholder="1080" min="1" max="65535">
+                                </div>
+                            </div>
+                            
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label for="proxyUsername">Логин</label>
+                                    <input type="text" id="proxyUsername" placeholder="username">
+                                </div>
+                                <div class="form-group">
+                                    <label for="proxyPassword">Пароль</label>
+                                    <input type="password" id="proxyPassword" placeholder="password">
+                                </div>
+                            </div>
+                            
+                            <div class="form-group">
+                                <button type="button" class="btn btn-secondary" id="testProxyBtn">
+                                    🔍 Проверить прокси
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Additional Tab -->
+                    <div id="additionalTab" class="tab-content hidden">
+                        <h3>Антидетект настройки</h3>
+                        
+                        <div class="form-group">
+                            <label class="checkbox-label">
+                                <input type="checkbox" id="canvasNoise" checked>
+                                Canvas шум (защита от Canvas fingerprinting)
+                            </label>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label class="checkbox-label">
+                                <input type="checkbox" id="webglNoise" checked>
+                                WebGL шум (защита от WebGL fingerprinting)
+                            </label>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label class="checkbox-label">
+                                <input type="checkbox" id="audioNoise" checked>
+                                Audio шум (защита от Audio fingerprinting)
+                            </label>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label class="checkbox-label">
+                                <input type="checkbox" id="blockWebRTC" checked>
+                                Блокировать WebRTC (скрытие реального IP)
+                            </label>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label class="checkbox-label">
+                                <input type="checkbox" id="spoofGeolocation">
+                                Подмена геолокации
+                            </label>
+                        </div>
+                        
+                        <div id="geolocationSettings" class="geolocation-settings">
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label for="latitude">Широта</label>
+                                    <input type="number" id="latitude" step="0.000001" placeholder="55.7558">
+                                </div>
+                                <div class="form-group">
+                                    <label for="longitude">Долгота</label>
+                                    <input type="number" id="longitude" step="0.000001" placeholder="37.6176">
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </form>
+            </div>
+            
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" id="cancelProfileBtn">Отмена</button>
+                <button type="button" class="btn btn-primary" id="saveProfileBtn">Сохранить профиль</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="preload.js"></script>
+    <script src="renderer.js"></script>
+</body>
+</html>

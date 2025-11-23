@@ -1,0 +1,44 @@
+{
+  "name": "aezakmi-antidetect",
+  "version": "999.0.0",
+  "description": "AEZAKMI Antidetect Browser Pro v2.0",
+  "main": "main.js",
+  "scripts": {
+    "start": "DISPLAY=:99 electron . --no-sandbox",
+    "dev": "DISPLAY=:99 electron . --dev --no-sandbox",
+    "build": "electron-builder",
+    "postinstall": "electron-builder install-app-deps"
+  },
+  "keywords": [
+    "antidetect",
+    "browser",
+    "proxy",
+    "fingerprint"
+  ],
+  "author": "AEZAKMI Team",
+  "license": "MIT",
+  "devDependencies": {
+    "electron": "^31.0.0",
+    "electron-builder": "^24.13.3"
+  },
+  "dependencies": {
+    "proxy-agent": "^6.3.1",
+    "puppeteer-core": "^21.11.0",
+    "fs-extra": "^11.1.1"
+  },
+  "build": {
+    "appId": "com.aezakmi.antidetect",
+    "productName": "AEZAKMI Antidetect Pro",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "renderer.js",
+      "index.html",
+      "styles.css",
+      "assets/**/*"
+    ]
+  }
+}
