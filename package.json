@@ -1,44 +1,58 @@
 {
-  "name": "aezakmi-antidetect",
-  "version": "999.0.0",
-  "description": "AEZAKMI Antidetect Browser Pro v2.0",
-  "main": "main.js",
+  "name": "aezakmi-antidetect-web",
+  "version": "2.0.0",
+  "description": "AEZAKMI Antidetect Browser Pro - Web Application",
+  "type": "module",
   "scripts": {
-    "start": "DISPLAY=:99 electron . --no-sandbox",
-    "dev": "DISPLAY=:99 electron . --dev --no-sandbox",
-    "build": "electron-builder",
-    "postinstall": "electron-builder install-app-deps"
-  },
-  "keywords": [
-    "antidetect",
-    "browser",
-    "proxy",
-    "fingerprint"
-  ],
-  "author": "AEZAKMI Team",
-  "license": "MIT",
-  "devDependencies": {
-    "electron": "^31.0.0",
-    "electron-builder": "^24.13.3"
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "lint": "eslint .",
+    "preview": "vite preview"
   },
   "dependencies": {
-    "proxy-agent": "^6.3.1",
-    "puppeteer-core": "^21.11.0",
-    "fs-extra": "^11.1.1"
+    "@radix-ui/react-checkbox": "^1.0.4",
+    "@radix-ui/react-dialog": "^1.0.5",
+    "@radix-ui/react-label": "^2.1.8",
+    "@radix-ui/react-select": "^2.0.0",
+    "@radix-ui/react-slot": "^1.0.2",
+    "@radix-ui/react-tabs": "^1.0.4",
+    "@tauri-apps/api": "^2.9.0",
+    "@tauri-apps/plugin-dialog": "^2.4.2",
+    "class-variance-authority": "^0.7.0",
+    "clsx": "^2.0.0",
+    "lucide-react": "^0.294.0",
+    "next-themes": "^0.4.6",
+    "playwright": "^1.56.1",
+  "proxy-chain": "^1.0.0",
+    "puppeteer": "^23.5.0",
+    "puppeteer-extra": "^3.3.6",
+    "puppeteer-extra-plugin-stealth": "^2.11.2",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "react-router-dom": "^6.20.0",
+    "sonner": "^1.2.0",
+    "tailwind-merge": "^2.1.0"
   },
-  "build": {
-    "appId": "com.aezakmi.antidetect",
-    "productName": "AEZAKMI Antidetect Pro",
-    "directories": {
-      "output": "dist"
-    },
-    "files": [
-      "main.js",
-      "preload.js",
-      "renderer.js",
-      "index.html",
-      "styles.css",
-      "assets/**/*"
-    ]
+  "devDependencies": {
+    "@eslint/js": "^9.0.0",
+    "@tauri-apps/cli": "^2.9.4",
+    "@tauri-apps/plugin-fs": "^2.4.4",
+    "@tauri-apps/plugin-shell": "^2.3.3",
+    "@types/react": "^18.2.43",
+    "@types/react-dom": "^18.2.17",
+    "@typescript-eslint/eslint-plugin": "^6.14.0",
+    "@typescript-eslint/parser": "^6.14.0",
+    "@vitejs/plugin-react": "^4.2.1",
+    "autoprefixer": "^10.4.16",
+    "eslint": "^8.55.0",
+    "eslint-plugin-react-hooks": "^4.6.0",
+    "eslint-plugin-react-refresh": "^0.4.5",
+    "globals": "^16.0.0",
+    "postcss": "^8.4.32",
+    "tailwindcss": "^3.3.6",
+    "tailwindcss-animate": "^1.0.7",
+    "typescript": "^5.2.2",
+    "typescript-eslint": "^8.0.0",
+    "vite": "^5.0.8"
   }
 }
