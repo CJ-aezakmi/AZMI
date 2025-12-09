@@ -17,8 +17,8 @@ pub fn run() {
             }
             Ok(())
         })
-        // Register a command `open_profile` that the frontend can call via `invoke`
-        .invoke_handler(tauri::generate_handler![open_profile])
+        // Register commands
+        .invoke_handler(tauri::generate_handler![open_profile, check_and_install_nodejs])
         .run(tauri::generate_context!())
         .expect("error")
 }
@@ -143,5 +143,58 @@ fn open_profile(_app: tauri::AppHandle, app_path: String, args: String) -> Resul
         } else {
             Err(format!("failed to open app: exit code {:?}", status.code()))
         }
+    }
+}
+
+#[tauri::command]
+async fn check_and_install_nodejs() -> Result<String, String> {
+    use std::process::Command;
+    
+    // Check if Node.js is already installed
+    #[cfg(target_os = "windows")]
+    {
+        let check = Command::new("node")
+            .arg("--version")
+            .output();
+        
+        if check.is_ok() && check.unwrap().status.success() {
+            return Ok("Node.js already installed".to_string());
+        }
+        
+        // Node.js not found, try to install from bundled installer
+        let app_dir = std::env::current_exe()
+            .ok()
+            .and_then(|p| p.parent().map(|p| p.to_path_buf()))
+            .ok_or("Failed to get app directory")?;
+        
+        let installer_candidates = vec![
+            app_dir.join("node-installer.msi"),
+            app_dir.join("resources").join("node-installer.msi"),
+            app_dir.join("binaries").join("node-installer.msi"),
+        ];
+        
+        let installer_path = installer_candidates.into_iter()
+            .find(|p| p.exists())
+            .ok_or("Node.js installer not found. Please install Node.js 18+ manually from https://nodejs.org")?;
+        
+        // Launch installer with UI (not silent, so user can see progress)
+        let mut cmd = Command::new("msiexec");
+        cmd.arg("/i")
+           .arg(installer_path)
+           .arg("/qb") // Basic UI with progress
+           .arg("ADDLOCAL=ALL");
+        
+        let status = cmd.status().map_err(|e| format!("Failed to launch installer: {}", e))?;
+        
+        if status.success() {
+            Ok("Node.js installation started. Please restart the application after installation completes.".to_string())
+        } else {
+            Err("Installation was cancelled or failed. Please install Node.js manually from https://nodejs.org".to_string())
+        }
+    }
+    
+    #[cfg(not(target_os = "windows"))]
+    {
+        Ok("Node.js check is only available on Windows".to_string())
     }
 }

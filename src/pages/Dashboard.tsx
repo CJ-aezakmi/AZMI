@@ -28,6 +28,41 @@ const Dashboard = () => {
     { name: 'Cookie AutoDelete', enabled: false }
   ]);
 
+  // Проверка Node.js при первом запуске
+  useEffect(() => {
+    const checkNodeJS = async () => {
+      const hasChecked = localStorage.getItem('nodejs_check_done');
+      if (hasChecked) return;
+      
+      try {
+        const { invoke } = await import('@tauri-apps/api/core');
+        const result = await invoke('check_and_install_nodejs') as string;
+        
+        if (result.includes('already installed')) {
+          localStorage.setItem('nodejs_check_done', 'true');
+        } else {
+          // Show installation message
+          if (window.confirm(
+            'Node.js не установлен на вашем компьютере.\n\n' +
+            'Он необходим для запуска браузерных профилей.\n\n' +
+            'Запустить установку сейчас?'
+          )) {
+            const installResult = await invoke('check_and_install_nodejs') as string;
+            alert(installResult);
+            
+            if (installResult.includes('installation started')) {
+              localStorage.setItem('nodejs_check_done', 'true');
+            }
+          }
+        }
+      } catch (error) {
+        console.error('Node.js check failed:', error);
+      }
+    };
+    
+    checkNodeJS();
+  }, []);
+
   // Загрузка данных из localStorage
   useEffect(() => {
     const savedProfiles = localStorage.getItem('aezakmi_profiles');
@@ -155,12 +190,7 @@ const Dashboard = () => {
   const handleDeleteProfile = async (profileId: string) => {
     const profile = profiles.find(p => p.id === profileId);
     if (profile) {
-      const confirmed = await safeConfirm(`Удалить профиль "${profile.name}"?`, {
-        title: 'Подтверждение удаления',
-        kind: 'warning',
-        okLabel: 'Удалить',
-        cancelLabel: 'Отмена'
-      });
+      const confirmed = await safeConfirm(`Удалить профиль "${profile.name}"?`);
 
       if (confirmed) {
         saveProfiles(profiles.filter(p => p.id !== profileId));
@@ -197,14 +227,9 @@ const Dashboard = () => {
     toast.success(`Запущено профилей: ${selectedProfiles.size}`);
   };
 
-  // Удаление выбранных (ИСПРАВЛЕНО: использует Tauri dialog)
+  // Удаление выбранных
   const handleDeleteSelected = async () => {
-    const confirmed = await safeConfirm(`Удалить ${selectedProfiles.size} профилей?`, {
-      title: 'Подтверждение удаления',
-      kind: 'warning',
-      okLabel: 'Удалить',
-      cancelLabel: 'Отмена'
-    });
+    const confirmed = await safeConfirm(`Удалить ${selectedProfiles.size} профилей?`);
 
     if (confirmed) {
       saveProfiles(profiles.filter(p => !selectedProfiles.has(p.id)));
@@ -267,15 +292,10 @@ const Dashboard = () => {
     setIsProxyModalOpen(false);
   };
 
-  // Удаление прокси (ИСПРАВЛЕНО: использует Tauri dialog)
+  // Удаление прокси
   const handleDeleteProxy = async (index: number) => {
     const proxy = proxies[index];
-    const confirmed = await safeConfirm(`Удалить прокси ${proxy.host}:${proxy.port}?`, {
-      title: 'Подтверждение удаления',
-      kind: 'warning',
-      okLabel: 'Удалить',
-      cancelLabel: 'Отмена'
-    });
+    const confirmed = await safeConfirm(`Удалить прокси ${proxy.host}:${proxy.port}?`);
 
     if (confirmed) {
       saveProxies(proxies.filter((_, i) => i !== index));
@@ -303,14 +323,9 @@ const Dashboard = () => {
     }, 1500);
   };
 
-  // Добавление папки (ИСПРАВЛЕНО: использует Tauri dialog)
+  // Добавление папки
   const handleAddFolder = async () => {
-    const folderName = await safePrompt('Введите название папки:', {
-      title: 'Создание папки',
-      kind: 'info',
-      okLabel: 'Создать',
-      cancelLabel: 'Отмена'
-    });
+    const folderName = await safePrompt('Введите название папки:');
 
     if (folderName && typeof folderName === 'string' && folderName.trim()) {
       saveFolders([...folders, folderName.trim()]);
@@ -318,15 +333,10 @@ const Dashboard = () => {
     }
   };
 
-  // Удаление папки (ИСПРАВЛЕНО: использует Tauri dialog)
+  // Удаление папки
   const handleDeleteFolder = async (index: number) => {
     const folder = folders[index];
-    const confirmed = await safeConfirm(`Удалить папку "${folder}"?`, {
-      title: 'Подтверждение удаления',
-      kind: 'warning',
-      okLabel: 'Удалить',
-      cancelLabel: 'Отмена'
-    });
+    const confirmed = await safeConfirm(`Удалить папку "${folder}"?`);
 
     if (confirmed) {
       saveFolders(folders.filter((_, i) => i !== index));
@@ -334,14 +344,9 @@ const Dashboard = () => {
     }
   };
 
-  // Добавление расширения (ИСПРАВЛЕНО: использует Tauri dialog)
+  // Добавление расширения
   const handleAddExtension = async () => {
-    const extName = await safePrompt('Введите название расширения:', {
-      title: 'Добавление расширения',
-      kind: 'info',
-      okLabel: 'Добавить',
-      cancelLabel: 'Отмена'
-    });
+    const extName = await safePrompt('Введите название расширения:');
 
     if (extName && typeof extName === 'string' && extName.trim()) {
       saveExtensions([...extensions, { name: extName.trim(), enabled: true }]);
@@ -357,15 +362,10 @@ const Dashboard = () => {
     toast.success(`Расширение ${newExtensions[index].enabled ? 'включено' : 'отключено'}`);
   };
 
-  // Удаление расширения (ИСПРАВЛЕНО: использует Tauri dialog)
+  // Удаление расширения
   const handleDeleteExtension = async (index: number) => {
     const ext = extensions[index];
-    const confirmed = await safeConfirm(`Удалить расширение "${ext.name}"?`, {
-      title: 'Подтвержение удаления',
-      kind: 'warning',
-      okLabel: 'Удалить',
-      cancelLabel: 'Отмена'
-    });
+    const confirmed = await safeConfirm(`Удалить расширение "${ext.name}"?`);
 
     if (confirmed) {
       saveExtensions(extensions.filter((_, i) => i !== index));

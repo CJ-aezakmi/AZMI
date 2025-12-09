@@ -45,13 +45,7 @@
       "digestAlgorithm": "sha256",
       "timestampUrl": "",
       "wix": {
-        "language": "en-US",
-        "fragmentPaths": [
-          "wix/nodejs.wxs"
-        ],
-        "componentRefs": [
-          "NodeInstaller"
-        ]
+        "language": "en-US"
       }
     }
   },

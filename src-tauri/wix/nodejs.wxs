@@ -1,9 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
-  <Fragment>
-    <!-- Node.js installer bundled with the app -->
-    <Component Id="NodeInstaller" Guid="*" Directory="INSTALLDIR">
-      <File Id="NodeInstallerMsi" Source="binaries/node-installer.msi" KeyPath="yes" />
-    </Component>
-  </Fragment>
-</Wix>
