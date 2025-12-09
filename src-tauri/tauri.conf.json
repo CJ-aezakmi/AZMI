@@ -25,6 +25,9 @@
   "bundle": {
     "active": true,
     "targets": "all",
+    "publisher": "AEZAKMI Team",
+    "copyright": "Copyright © 2025 AEZAKMI Team. All rights reserved.",
+    "homepage": "https://github.com/CJ-aezakmi/aezakmi",
     "icon": [
       "icons/32x32.png",
       "icons/64x64.png",
@@ -34,8 +37,14 @@
       "icons/icon.ico"
     ],
     "resources": [
-      "binaries/launch_playwright.exe"
-    ]
+      "binaries/launch_playwright.exe",
+      "node-runtime/**"
+    ],
+    "windows": {
+      "certificateThumbprint": null,
+      "digestAlgorithm": "sha256",
+      "timestampUrl": ""
+    }
   },
   
   "plugins": {

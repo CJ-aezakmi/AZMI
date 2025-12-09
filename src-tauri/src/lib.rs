@@ -119,6 +119,15 @@ fn open_profile(_app: tauri::AppHandle, app_path: String, args: String) -> Resul
             };
             
             cmd.arg(payload_b64);
+            
+            // Hide console window on Windows
+            #[cfg(target_os = "windows")]
+            {
+                use std::os::windows::process::CommandExt;
+                const CREATE_NO_WINDOW: u32 = 0x08000000;
+                cmd.creation_flags(CREATE_NO_WINDOW);
+            }
+            
             let _child = cmd.spawn().map_err(|e| e.to_string())?;
             return Ok(());
         }

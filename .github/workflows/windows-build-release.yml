@@ -31,6 +31,15 @@ jobs:
       - name: Install pkg (for bundling launcher)
         run: npm install -g pkg
 
+      - name: Download portable Node.js
+        run: |
+          Invoke-WebRequest -Uri "https://nodejs.org/dist/v18.20.5/node-v18.20.5-win-x64.zip" -OutFile node-portable.zip
+          Expand-Archive -Path node-portable.zip -DestinationPath .
+          Move-Item -Path "node-v18.20.5-win-x64" -Destination "src-tauri/node-runtime"
+          Remove-Item node-portable.zip
+          Write-Host "Portable Node.js installed to src-tauri/node-runtime"
+        shell: pwsh
+
       - name: Build launcher exe with pkg
         run: |
           mkdir -p src-tauri/binaries

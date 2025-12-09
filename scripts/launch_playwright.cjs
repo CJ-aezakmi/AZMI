@@ -8,6 +8,31 @@ const fs = require('fs');
 const path = require('path');
 let ProxyChain = null;
 
+// Find bundled Node.js runtime or system node
+function getBundledNodePath() {
+  // When running from pkg bundle, __dirname points to snapshot filesystem
+  // Try to find node-runtime in app directory
+  const exePath = process.execPath;
+  const appDir = path.dirname(exePath);
+  
+  // Check for bundled node-runtime
+  const bundledNodePaths = [
+    path.join(appDir, 'node-runtime', 'node.exe'),
+    path.join(appDir, '..', 'node-runtime', 'node.exe'),
+    path.join(appDir, 'resources', 'node-runtime', 'node.exe'),
+  ];
+  
+  for (const nodePath of bundledNodePaths) {
+    if (fs.existsSync(nodePath)) {
+      console.log('Found bundled Node.js at:', nodePath);
+      return { node: nodePath, npx: path.join(path.dirname(nodePath), 'npx.cmd') };
+    }
+  }
+  
+  // Fallback to system node
+  return { node: 'node', npx: process.platform === 'win32' ? 'npx.cmd' : 'npx' };
+}
+
 // Auto-install Chromium if not present
 async function ensureChromiumInstalled() {
   // Check if chromium is already available
@@ -26,15 +51,14 @@ async function ensureChromiumInstalled() {
     console.log('Installing Chromium browser...');
     console.log('This may take a few minutes on first launch.');
     
-    // On Windows in pkg bundle, use npx from PATH
-    const installCmd = process.platform === 'win32' 
-      ? 'npx.cmd playwright install chromium'
-      : 'npx playwright install chromium';
+    const { npx } = getBundledNodePath();
+    const installCmd = `"${npx}" playwright install chromium`;
     
     execSync(installCmd, { 
       stdio: 'inherit',
       timeout: 600000, // 10 minutes timeout
-      env: { ...process.env }
+      env: { ...process.env },
+      shell: true
     });
     
     console.log('Chromium browser installed successfully!');
@@ -48,10 +72,8 @@ async function ensureChromiumInstalled() {
     }
   } catch (installError) {
     console.error('Failed to auto-install Chromium:', installError.message);
-    console.error('\nPlease install manually by running:');
-    console.error('  npm install -g playwright');
-    console.error('  npx playwright install chromium');
-    throw new Error('Chromium browser not available. Manual installation required.');
+    console.error('\nChromium browser is required for this application.');
+    throw new Error('Chromium browser not available.');
   }
 }
 
