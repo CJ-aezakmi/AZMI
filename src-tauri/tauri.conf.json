@@ -12,6 +12,7 @@
     "windows": [
       {
         "label": "main",
+        "title": "AEZAKMI Pro",
         "width": 1280,
         "height": 820,
         "resizable": true,
@@ -24,7 +25,7 @@
   },
   "bundle": {
     "active": true,
-    "targets": "all",
+    "targets": ["nsis"],
     "publisher": "AEZAKMI Team",
     "copyright": "Copyright © 2025 AEZAKMI Team. All rights reserved.",
     "homepage": "https://github.com/CJ-aezakmi/aezakmi",
@@ -37,23 +38,15 @@
       "icons/icon.ico"
     ],
     "resources": [
-      "binaries/launch_playwright.exe",
-      "binaries/node-installer.msi"
+      "../bundle/**/*"
     ],
     "windows": {
       "certificateThumbprint": null,
       "digestAlgorithm": "sha256",
-      "timestampUrl": "",
-      "wix": {
-        "language": "en-US"
-      }
+      "timestampUrl": ""
     }
   },
   
-  "plugins": {
-    "shell": {
-      "open": true
-    }
-  }
+  "plugins": {}
   
 }

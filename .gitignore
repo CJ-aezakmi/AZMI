@@ -9,3 +9,36 @@ release/
 *.zip
 *.tar.gz
 /release-builds/
+
+# Bundle directory (large files, generated before build)
+bundle/
+
+# Rust
+target/
+Cargo.lock
+
+# User data (не должно попадать в git)
+aezakmi_used_keys.txt
+aezakmi-profile-*/
+*.log
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Временные файлы
+*.tmp
+*.temp
+package-lock.json
+puppeteer-launcher.js
+image*.png
+
+# Debug
+*.pdb
+*.ilk

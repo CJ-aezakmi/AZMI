@@ -16,12 +16,14 @@ interface ProfileModalProps {
   onSave: (profile: Omit<Profile, 'id' | 'createdAt' | 'status'>) => void;
   profile: Profile | null;
   proxies: Proxy[];
+  folders?: string[]; // Список доступных папок
 }
 
-const ProfileModal = ({ open, onOpenChange, onSave, profile, proxies }: ProfileModalProps) => {
+const ProfileModal = ({ open, onOpenChange, onSave, profile, proxies, folders = [] }: ProfileModalProps) => {
   const [formData, setFormData] = useState({
     name: '',
     notes: '',
+    folder: '', // Папка профиля
     userAgent: 'auto',
     screenWidth: 1920,
     screenHeight: 1080,
@@ -50,6 +52,7 @@ const ProfileModal = ({ open, onOpenChange, onSave, profile, proxies }: ProfileM
       setFormData({
         name: profile.name,
         notes: profile.notes || '',
+        folder: profile.folder || '',
         userAgent: profile.userAgent,
         screenWidth: profile.screenWidth,
         screenHeight: profile.screenHeight,
@@ -73,6 +76,7 @@ const ProfileModal = ({ open, onOpenChange, onSave, profile, proxies }: ProfileM
       setFormData({
         name: '',
         notes: '',
+        folder: '',
         userAgent: 'auto',
         screenWidth: 1920,
         screenHeight: 1080,
@@ -199,6 +203,7 @@ const ProfileModal = ({ open, onOpenChange, onSave, profile, proxies }: ProfileM
     onSave({
       name: formData.name,
       notes: formData.notes,
+      folder: formData.folder || undefined,
       userAgent: formData.userAgent,
       screenWidth: formData.screenWidth,
       screenHeight: formData.screenHeight,
@@ -206,11 +211,11 @@ const ProfileModal = ({ open, onOpenChange, onSave, profile, proxies }: ProfileM
       timezone: formData.timezone,
       proxy: formData.proxyEnabled ? {
         enabled: true,
-        type: formData.proxyType,
-        host: formData.proxyHost,
-        port: formData.proxyPort,
-        username: formData.proxyUsername,
-        password: formData.proxyPassword,
+        type: formData.proxyType as 'http' | 'https' | 'socks5' | 'socks4',
+        host: formData.proxyHost.trim(),
+        port: formData.proxyPort.trim(), // Оставляем как string для совместимости
+        username: formData.proxyUsername.trim() || undefined,
+        password: formData.proxyPassword.trim() || undefined,
       } : undefined,
       antidetect: {
         canvasNoise: formData.canvasNoise,
@@ -251,6 +256,25 @@ const ProfileModal = ({ open, onOpenChange, onSave, profile, proxies }: ProfileM
                 placeholder="Мой профиль"
               />
             </div>
+            
+            <div>
+              <Label htmlFor="folder">Папка</Label>
+              <Select 
+                value={formData.folder} 
+                onValueChange={(value) => setFormData({ ...formData, folder: value === '_none_' ? '' : value })}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Без папки" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="_none_">Без папки</SelectItem>
+                  {folders.map((folder) => (
+                    <SelectItem key={folder} value={folder}>{folder}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            
             <div>
               <Label htmlFor="notes">Заметки</Label>
               <Textarea

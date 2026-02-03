@@ -7,10 +7,12 @@ import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import ProfileModal from '@/components/ProfileModal';
 import ProxyModal from '@/components/ProxyModal';
+import UpdateDialog from '@/components/UpdateDialog';
 import { toast } from 'sonner';
 import { Profile, Proxy } from '@/types';
 import { launchProfile } from '@/lib/launchProfile';
 import { safeConfirm, safePrompt } from '@/lib/safeDialog';
+import { checkForUpdates, downloadUpdate, installUpdate, UpdateInfo, shouldAutoCheck, setLastUpdateCheck, isAutoUpdateEnabled, getCurrentVersion } from '@/lib/updater';
 
 const Dashboard = () => {
   const [activeView, setActiveView] = useState('profiles');
@@ -22,11 +24,10 @@ const Dashboard = () => {
   const [isProxyModalOpen, setIsProxyModalOpen] = useState(false);
   const [editingProfile, setEditingProfile] = useState<Profile | null>(null);
   const [folders, setFolders] = useState<string[]>(['Работа', 'Личное', 'Тестовые']);
-  const [extensions, setExtensions] = useState<Array<{name: string, enabled: boolean}>>([
-    { name: 'uBlock Origin', enabled: true },
-    { name: 'Privacy Badger', enabled: true },
-    { name: 'Cookie AutoDelete', enabled: false }
-  ]);
+  const [selectedFolder, setSelectedFolder] = useState<string | null>(null);
+  const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null);
+  const [showUpdateDialog, setShowUpdateDialog] = useState(false);
+
 
   // Проверка Node.js при первом запуске
   useEffect(() => {
@@ -68,7 +69,6 @@ const Dashboard = () => {
     const savedProfiles = localStorage.getItem('aezakmi_profiles');
     const savedProxies = localStorage.getItem('aezakmi_proxies');
     const savedFolders = localStorage.getItem('aezakmi_folders');
-    const savedExtensions = localStorage.getItem('aezakmi_extensions');
     
     if (savedProfiles) {
       setProfiles(JSON.parse(savedProfiles));
@@ -78,9 +78,6 @@ const Dashboard = () => {
     }
     if (savedFolders) {
       setFolders(JSON.parse(savedFolders));
-    }
-    if (savedExtensions) {
-      setExtensions(JSON.parse(savedExtensions));
     }
   }, []);
 
@@ -102,11 +99,7 @@ const Dashboard = () => {
     localStorage.setItem('aezakmi_folders', JSON.stringify(newFolders));
   };
 
-  // Сохранение расширений
-  const saveExtensions = (newExtensions: Array<{name: string, enabled: boolean}>) => {
-    setExtensions(newExtensions);
-    localStorage.setItem('aezakmi_extensions', JSON.stringify(newExtensions));
-  };
+
 
   // Создание/редактирование профиля
   const handleSaveProfile = (profileData: Omit<Profile, 'id' | 'createdAt' | 'status'>) => {
@@ -156,8 +149,22 @@ const Dashboard = () => {
         });
       } catch (err: any) {
         console.error('launchProfile error', err);
-        toast.error(`Не удалось запустить профиль: ${err?.message ?? String(err)}`);
+        toast.error(`Не удалось запустить профиль`, {
+          description: err?.message || String(err)
+        });
       }
+    }
+  };
+
+  // Диагностика Playwright
+  const handleCheckPlaywright = async () => {
+    try {
+      const { invoke } = await import('@tauri-apps/api/core');
+      const result = await invoke('check_and_install_playwright') as string;
+      
+      alert('✅ Статус компонентов:\n\n' + result);
+    } catch (err: any) {
+      alert('❌ Ошибка проверки:\n\n' + err);
     }
   };
 
@@ -344,39 +351,90 @@ const Dashboard = () => {
     }
   };
 
-  // Добавление расширения
-  const handleAddExtension = async () => {
-    const extName = await safePrompt('Введите название расширения:');
-
-    if (extName && typeof extName === 'string' && extName.trim()) {
-      saveExtensions([...extensions, { name: extName.trim(), enabled: true }]);
-      toast.success(`Расширение "${extName}" добавлено!`);
-    }
-  };
-
-  // Переключение расширения
-  const toggleExtension = (index: number) => {
-    const newExtensions = [...extensions];
-    newExtensions[index].enabled = !newExtensions[index].enabled;
-    saveExtensions(newExtensions);
-    toast.success(`Расширение ${newExtensions[index].enabled ? 'включено' : 'отключено'}`);
-  };
-
-  // Удаление расширения
+  // Удаление расширения - ЗАГЛУШКА (функция больше не используется)
   const handleDeleteExtension = async (index: number) => {
-    const ext = extensions[index];
-    const confirmed = await safeConfirm(`Удалить расширение "${ext.name}"?`);
+    // Функция оставлена для совместимости, но не используется
+  };
 
-    if (confirmed) {
-      saveExtensions(extensions.filter((_, i) => i !== index));
-      toast.success(`Расширение "${ext.name}" удалено!`);
+  // Проверка обновлений
+  const handleCheckForUpdates = async () => {
+    toast.info('Проверка обновлений...');
+    
+    try {
+      const update = await checkForUpdates();
+      
+      if (!update) {
+        toast.error('Не удалось проверить обновления');
+        return;
+      }
+      
+      if (update.available) {
+        setUpdateInfo(update);
+        setShowUpdateDialog(true);
+        setLastUpdateCheck();
+      } else {
+        toast.success('У вас установлена последняя версия!');
+      }
+    } catch (error) {
+      console.error('Error checking updates:', error);
+      toast.error('Ошибка при проверке обновлений');
     }
   };
+
+  // Установка обновления
+  const handleInstallUpdate = async () => {
+    if (!updateInfo) return;
+    
+    try {
+      toast.info('Скачивание обновления...');
+      
+      const installerPath = await downloadUpdate(updateInfo.downloadUrl);
+      
+      toast.success('Запуск установщика...');
+      
+      await installUpdate(installerPath);
+      
+      // После вызова installUpdate приложение закроется
+    } catch (error: any) {
+      console.error('Error installing update:', error);
+      toast.error(`Ошибка установки: ${error.message}`);
+    }
+  };
+
+  // Автоматическая проверка обновлений при запуске
+  useEffect(() => {
+    const autoCheckUpdates = async () => {
+      if (isAutoUpdateEnabled() && shouldAutoCheck()) {
+        const update = await checkForUpdates();
+        
+        if (update && update.available) {
+          setUpdateInfo(update);
+          setShowUpdateDialog(true);
+          setLastUpdateCheck();
+        }
+      }
+    };
+    
+    // Задержка 3 секунды после загрузки приложения
+    const timer = setTimeout(autoCheckUpdates, 3000);
+    
+    return () => clearTimeout(timer);
+  }, []);
 
   // Фильтрация профилей
-  const filteredProfiles = profiles.filter(profile =>
-    profile.name.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const filteredProfiles = profiles.filter(profile => {
+    // Поиск по имени
+    const matchesSearch = profile.name.toLowerCase().includes(searchTerm.toLowerCase());
+    // Фильтр по папке
+    let matchesFolder = true;
+    if (selectedFolder === '_no_folder_') {
+      matchesFolder = !profile.folder; // Профили без папки
+    } else if (selectedFolder) {
+      matchesFolder = profile.folder === selectedFolder; // Профили конкретной папки
+    }
+    // Если selectedFolder === null, показываем все профили
+    return matchesSearch && matchesFolder;
+  });
 
   // Статистика
   const stats = {
@@ -390,7 +448,6 @@ const Dashboard = () => {
     { id: 'profiles', label: 'Все профили', icon: Play, count: profiles.length },
     { id: 'folders', label: 'Папки', icon: Folder, count: folders.length },
     { id: 'proxies', label: 'Прокси', icon: Globe, count: proxies.length },
-    { id: 'extensions', label: 'Расширения', icon: Puzzle, count: extensions.length },
     { id: 'statistics', label: 'Статистика', icon: BarChart3 },
     { id: 'settings', label: 'Настройки', icon: Settings },
   ];
@@ -443,10 +500,17 @@ const Dashboard = () => {
               setEditingProfile(null);
               setIsProfileModalOpen(true);
             }}
-            className="w-full"
+            className="w-full mb-2"
           >
             <Plus className="w-4 h-4 mr-2" />
             Создать профиль
+          </Button>
+          <Button
+            onClick={handleCheckPlaywright}
+            variant="outline"
+            className="w-full text-xs"
+          >
+            🔍 Проверка компонентов
           </Button>
         </div>
       </aside>
@@ -597,28 +661,84 @@ const Dashboard = () => {
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {folders.map((folder, index) => (
-                <Card key={index} className="bg-white/95 backdrop-blur-sm">
-                  <CardContent className="flex items-center justify-between p-6">
-                    <div className="flex items-center gap-3">
-                      <Folder className="w-8 h-8 text-blue-600" />
-                      <div>
-                        <h3 className="font-semibold text-lg">{folder}</h3>
-                        <p className="text-sm text-gray-600">
-                          {profiles.filter(p => p.notes?.includes(folder)).length} профилей
-                        </p>
-                      </div>
+              {/* Папка "Все профили" */}
+              <Card 
+                className={`bg-white/95 backdrop-blur-sm cursor-pointer hover:shadow-lg transition-all ${!selectedFolder ? 'ring-2 ring-blue-500' : ''}`}
+                onClick={() => {
+                  setSelectedFolder(null);
+                  setActiveView('profiles');
+                }}
+              >
+                <CardContent className="flex items-center justify-between p-6">
+                  <div className="flex items-center gap-3">
+                    <Folder className="w-8 h-8 text-gray-600" />
+                    <div>
+                      <h3 className="font-semibold text-lg">Все профили</h3>
+                      <p className="text-sm text-gray-600">
+                        {profiles.length} профилей
+                      </p>
                     </div>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => handleDeleteFolder(index)}
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </Button>
-                  </CardContent>
-                </Card>
-              ))}
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Папка "Без папки" */}
+              <Card 
+                className={`bg-white/95 backdrop-blur-sm cursor-pointer hover:shadow-lg transition-all ${selectedFolder === null ? 'ring-2 ring-blue-500' : ''}`}
+                onClick={() => {
+                  setSelectedFolder('_no_folder_');
+                  setActiveView('profiles');
+                }}
+              >
+                <CardContent className="flex items-center justify-between p-6">
+                  <div className="flex items-center gap-3">
+                    <Folder className="w-8 h-8 text-orange-600" />
+                    <div>
+                      <h3 className="font-semibold text-lg">Без папки</h3>
+                      <p className="text-sm text-gray-600">
+                        {profiles.filter(p => !p.folder).length} профилей
+                      </p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Пользовательские папки */}
+              {folders.map((folder, index) => {
+                const folderProfiles = profiles.filter(p => p.folder === folder);
+                return (
+                  <Card 
+                    key={index} 
+                    className={`bg-white/95 backdrop-blur-sm cursor-pointer hover:shadow-lg transition-all ${selectedFolder === folder ? 'ring-2 ring-blue-500' : ''}`}
+                    onClick={() => {
+                      setSelectedFolder(folder);
+                      setActiveView('profiles');
+                    }}
+                  >
+                    <CardContent className="flex items-center justify-between p-6">
+                      <div className="flex items-center gap-3 flex-1">
+                        <Folder className="w-8 h-8 text-blue-600" />
+                        <div>
+                          <h3 className="font-semibold text-lg">{folder}</h3>
+                          <p className="text-sm text-gray-600">
+                            {folderProfiles.length} профилей
+                          </p>
+                        </div>
+                      </div>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleDeleteFolder(index);
+                        }}
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </Button>
+                    </CardContent>
+                  </Card>
+                );
+              })}
             </div>
           </div>
         )}
@@ -681,46 +801,6 @@ const Dashboard = () => {
                 ))}
               </div>
             )}
-          </div>
-        )}
-
-        {activeView === 'extensions' && (
-          <div className="p-8">
-            <div className="mb-6 flex justify-between items-center">
-              <h2 className="text-2xl font-bold">Управление расширениями</h2>
-              <Button onClick={handleAddExtension}>
-                <Plus className="w-4 h-4 mr-2" />
-                Добавить расширение
-              </Button>
-            </div>
-
-            <div className="space-y-3">
-              {extensions.map((ext, index) => (
-                <Card key={index} className="bg-white/95 backdrop-blur-sm">
-                  <CardContent className="flex items-center justify-between p-4">
-                    <div className="flex items-center gap-3">
-                      <Checkbox
-                        checked={ext.enabled}
-                        onCheckedChange={() => toggleExtension(index)}
-                      />
-                      <div>
-                        <h3 className="font-semibold">{ext.name}</h3>
-                        <p className="text-sm text-gray-600">
-                          {ext.enabled ? 'Включено' : 'Отключено'}
-                        </p>
-                      </div>
-                    </div>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => handleDeleteExtension(index)}
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </Button>
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
           </div>
         )}
 
@@ -855,11 +935,11 @@ const Dashboard = () => {
                 </CardHeader>
                 <CardContent>
                   <div className="space-y-2">
-                    <p><strong>Версия:</strong> 2.0.0</p>
+                    <p><strong>Версия:</strong> {getCurrentVersion()}</p>
                     <p><strong>Дата сборки:</strong> {new Date().toLocaleDateString('ru-RU')}</p>
                     <p><strong>Лицензия:</strong> Коммерческая</p>
                     <div className="pt-4">
-                      <Button variant="outline" className="w-full">
+                      <Button variant="outline" className="w-full" onClick={handleCheckForUpdates}>
                         Проверить обновления
                       </Button>
                     </div>
@@ -878,12 +958,20 @@ const Dashboard = () => {
         onSave={handleSaveProfile}
         profile={editingProfile}
         proxies={proxies}
+        folders={folders}
       />
 
       <ProxyModal
         open={isProxyModalOpen}
         onOpenChange={setIsProxyModalOpen}
         onAdd={handleAddProxies}
+      />
+
+      <UpdateDialog
+        open={showUpdateDialog}
+        updateInfo={updateInfo}
+        onUpdate={handleInstallUpdate}
+        onLater={() => setShowUpdateDialog(false)}
       />
     </div>
   );
