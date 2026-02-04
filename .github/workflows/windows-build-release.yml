@@ -89,24 +89,36 @@ jobs:
           CARGO_HOME: ${{ runner.temp }}/cargo
         run: pnpm tauri build --target x86_64-pc-windows-msvc
 
-      - name: Package Node.js and Playwright with installer
+      - name: Build custom NSIS installer with all resources
         run: |
-          Write-Host "Copying Node.js and Playwright to bundle..."
-          $bundlePath = "src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis"
+          Write-Host "Installing NSIS..."
+          choco install nsis -y
           
-          # Создаём папку resources рядом с установщиком
-          New-Item -ItemType Directory -Force -Path "$bundlePath/resources"
+          Write-Host "Preparing resources for NSIS installer..."
           
-          # Копируем Node.js
-          Copy-Item -Path "node" -Destination "$bundlePath/resources/node" -Recurse -Force
+          # Копируем Node.js в корень workspace для NSIS
+          Copy-Item -Path "../../node" -Destination "node" -Recurse -Force
           
           # Копируем Playwright cache
-          Copy-Item -Path "playwright-cache" -Destination "$bundlePath/resources/playwright-cache" -Recurse -Force
+          Copy-Item -Path "../../playwright-cache" -Destination "playwright-cache" -Recurse -Force
           
           # Копируем скрипты
-          Copy-Item -Path "scripts" -Destination "$bundlePath/resources/scripts" -Recurse -Force
+          Copy-Item -Path "../../scripts" -Destination "scripts" -Recurse -Force
           
-          Write-Host "Resources packaged successfully"
+          Write-Host "Building NSIS installer with Node.js and Playwright..."
+          & 'C:\Program Files (x86)\NSIS\makensis.exe' installer.nsi
+          
+          Write-Host "NSIS installer created successfully"
+          
+          # Проверяем что файл создался
+          if (Test-Path "AEZAKMI-Setup.exe") {
+            Write-Host "✓ AEZAKMI-Setup.exe created successfully"
+            $size = (Get-Item "AEZAKMI-Setup.exe").Length / 1MB
+            Write-Host "  Size: $([math]::Round($size, 2)) MB"
+          } else {
+            Write-Error "Failed to create AEZAKMI-Setup.exe"
+            exit 1
+          }
         shell: pwsh
 
       - name: Upload build artifacts
@@ -114,14 +126,13 @@ jobs:
         with:
           name: tauri-windows-bundle
           path: |
-            src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/*.exe
-            src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/resources/**
+            AEZAKMI-Setup.exe
 
       - name: Create GitHub Release (on tag)
         if: startsWith(github.ref, 'refs/tags/')
         uses: ncipollo/release-action@v1
         with:
-          artifacts: "src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/*.exe"
+          artifacts: "AEZAKMI-Setup.exe"
           token: ${{ secrets.GITHUB_TOKEN }}
           draft: false
           prerelease: false
