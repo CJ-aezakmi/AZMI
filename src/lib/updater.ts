@@ -18,18 +18,18 @@ export interface UpdateInfo {
 export async function checkForUpdates(): Promise<UpdateInfo | null> {
   try {
     const response = await fetch(`https://api.github.com/repos/${GITHUB_REPO}/releases/latest`);
-    
+
     if (!response.ok) {
       console.error('Failed to check for updates:', response.statusText);
       return null;
     }
-    
+
     const release = await response.json();
     const latestVersion = release.tag_name.replace(/^v/, ''); // Убираем 'v' из 'v2.0.1'
-    
+
     // Сравниваем версии
     const isNewer = compareVersions(latestVersion, CURRENT_VERSION) > 0;
-    
+
     if (!isNewer) {
       return {
         available: false,
@@ -39,17 +39,17 @@ export async function checkForUpdates(): Promise<UpdateInfo | null> {
         publishedAt: ''
       };
     }
-    
+
     // Ищем установщик для Windows (.msi или .exe)
-    const windowsAsset = release.assets.find((asset: any) => 
+    const windowsAsset = release.assets.find((asset: any) =>
       asset.name.endsWith('.msi') || asset.name.endsWith('.exe')
     );
-    
+
     if (!windowsAsset) {
       console.error('No Windows installer found in release');
       return null;
     }
-    
+
     return {
       available: true,
       version: latestVersion,
@@ -70,15 +70,15 @@ export async function checkForUpdates(): Promise<UpdateInfo | null> {
 function compareVersions(v1: string, v2: string): number {
   const parts1 = v1.split('.').map(Number);
   const parts2 = v2.split('.').map(Number);
-  
+
   for (let i = 0; i < Math.max(parts1.length, parts2.length); i++) {
     const part1 = parts1[i] || 0;
     const part2 = parts2[i] || 0;
-    
+
     if (part1 > part2) return 1;
     if (part1 < part2) return -1;
   }
-  
+
   return 0;
 }
 
@@ -88,11 +88,11 @@ function compareVersions(v1: string, v2: string): number {
 export async function downloadUpdate(url: string, onProgress?: (percent: number) => void): Promise<string> {
   try {
     // Вызываем Rust backend для скачивания (с прогрессом)
-    const filePath = await invoke<string>('download_update', { 
+    const filePath = await invoke<string>('download_update', {
       url,
-      onProgress: onProgress ? (percent: number) => onProgress(percent) : undefined 
+      onProgress: onProgress ? (percent: number) => onProgress(percent) : undefined
     });
-    
+
     return filePath;
   } catch (error) {
     console.error('Error downloading update:', error);
@@ -134,10 +134,10 @@ export function setLastUpdateCheck(): void {
 export function shouldAutoCheck(): boolean {
   const last = getLastUpdateCheck();
   if (!last) return true;
-  
+
   const now = new Date();
   const hoursSince = (now.getTime() - last.getTime()) / (1000 * 60 * 60);
-  
+
   return hoursSince >= 24;
 }
 

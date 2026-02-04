@@ -36,7 +36,7 @@ function generateUserAgent(profile: Profile): string {
 
   const osKey = os.toLowerCase() as keyof typeof userAgents;
   const engineKey = browserEngine as keyof typeof userAgents.windows;
-  
+
   return userAgents[osKey]?.[engineKey] || userAgents.windows.chromium;
 }
 
@@ -62,16 +62,16 @@ export async function launchProfile(profile: Profile) {
       const proxyHost = profile.proxy.host.trim();
       const proxyPort = String(profile.proxy.port).trim();
       const proxyType = profile.proxy.type || 'http';
-      
+
       const username = (profile.proxy.username || profile.proxy.login || '').trim();
       const password = (profile.proxy.password || '').trim();
-      
+
       proxyData = {
         server: `${proxyType}://${proxyHost}:${proxyPort}`,
         username: username || undefined,
         password: password || undefined,
       };
-      
+
       console.log('[LAUNCH] 🌐 Прокси:', {
         server: proxyData.server,
         hasAuth: !!(username && password),
@@ -145,30 +145,30 @@ export async function launchProfile(profile: Profile) {
 
     // Конвертируем в JSON и base64 для передачи через Rust
     const payload = JSON.stringify(launchConfig);
-    
+
     console.log('[LAUNCH] 📦 Payload размер:', payload.length, 'байт');
     console.log('[LAUNCH] 📦 Proxy в payload:', JSON.stringify(launchConfig.proxy));
 
     // Вызываем Rust команду для запуска браузера через новый лаунчер
-    await invoke('open_profile', { 
+    await invoke('open_profile', {
       appPath: 'advanced-antidetect', // Указываем использовать новый лаунчер
       args: payload,
     });
-    
+
     console.log(`[LAUNCH] ✅ Профиль "${profile.name}" успешно запущен!`);
-    
+
     return {
       success: true,
       profileDir,
       message: `Профиль "${profile.name}" запущен`,
     };
-    
+
   } catch (err: any) {
     console.error('[LAUNCH] ❌ Ошибка запуска:', err.message || err);
-    
+
     // Детальная обработка ошибок
     let errorMessage = 'Неизвестная ошибка';
-    
+
     if (err.message?.includes('proxy')) {
       errorMessage = 'Ошибка подключения к прокси. Проверьте настройки прокси.';
     } else if (err.message?.includes('timeout')) {
@@ -178,7 +178,7 @@ export async function launchProfile(profile: Profile) {
     } else {
       errorMessage = err.message || 'Не удалось запустить профиль';
     }
-    
+
     throw new Error(errorMessage);
   }
 }

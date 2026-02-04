@@ -6,13 +6,13 @@ import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { ExternalLink, Key, AlertCircle, DollarSign, Loader2 } from 'lucide-react';
-import { 
-  SXOrgClient, 
-  saveSXOrgApiKey, 
-  getSXOrgApiKey, 
+import {
+  SXOrgClient,
+  saveSXOrgApiKey,
+  getSXOrgApiKey,
   removeSXOrgApiKey,
   SXOrgBalance,
-  SXOrgProxyPort 
+  SXOrgProxyPort
 } from '@/lib/sxorg-api';
 import { SXOrgCreateProxy } from './SXOrgCreateProxy';
 import SXOrgImportProxy from './SXOrgImportProxy';
@@ -51,7 +51,7 @@ const SXOrgIntegration = ({ open, onClose, onProxiesImported }: SXOrgIntegration
     try {
       const sxClient = new SXOrgClient(key);
       const balanceData = await sxClient.getBalance();
-      
+
       if (balanceData.success) {
         setClient(sxClient);
         setBalance(balanceData);
@@ -92,7 +92,7 @@ const SXOrgIntegration = ({ open, onClose, onProxiesImported }: SXOrgIntegration
       // Парсим server:port из разных форматов
       let host: string;
       let port: string;
-      
+
       if (proxy.proxy && proxy.proxy.includes(':')) {
         // Новый формат: "89.39.104.79:19266"
         [host, port] = proxy.proxy.split(':');
@@ -101,17 +101,17 @@ const SXOrgIntegration = ({ open, onClose, onProxiesImported }: SXOrgIntegration
         host = proxy.server || '';
         port = proxy.port?.toString() || '';
       }
-      
+
       // Получаем данные для имени
       const countryCode = (proxy.countryCode || proxy.country_code || '').toLowerCase();
       const country = proxy.country || countryCode.toUpperCase();
       const city = proxy.cityName || proxy.city;
-      
+
       // Формируем название без эмодзи - иконки будут в UI
       // Используем город если есть, иначе код страны, иначе "Proxy"
       const displayName = (city && city.trim()) ? city : (countryCode ? countryCode.toUpperCase() : 'Proxy');
       const proxyName = `${displayName} - socks5://${host}:${port}`;
-      
+
       return {
         id: `sxorg-${proxy.id}`,
         name: proxyName,
@@ -251,20 +251,20 @@ const SXOrgIntegration = ({ open, onClose, onProxiesImported }: SXOrgIntegration
             <TabsTrigger value="create">Создать прокси</TabsTrigger>
             <TabsTrigger value="import">Импортировать прокси</TabsTrigger>
           </TabsList>
-          
+
           <TabsContent value="create" className="flex-1 overflow-y-auto mt-4">
             {client && (
-              <SXOrgCreateProxy 
-                client={client} 
+              <SXOrgCreateProxy
+                client={client}
                 onProxiesCreated={handleProxiesCreated}
               />
             )}
           </TabsContent>
-          
+
           <TabsContent value="import" className="flex-1 overflow-y-auto mt-4">
             {client && (
-              <SXOrgImportProxy 
-                client={client} 
+              <SXOrgImportProxy
+                client={client}
                 onProxiesImported={handleProxiesCreated}
               />
             )}

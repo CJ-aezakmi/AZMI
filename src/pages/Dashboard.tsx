@@ -38,11 +38,11 @@ const Dashboard = () => {
     const checkNodeJS = async () => {
       const hasChecked = localStorage.getItem('nodejs_check_done');
       if (hasChecked) return;
-      
+
       try {
         const { invoke } = await import('@tauri-apps/api/core');
         const result = await invoke('check_and_install_nodejs') as string;
-        
+
         if (result.includes('already installed')) {
           localStorage.setItem('nodejs_check_done', 'true');
         } else {
@@ -54,7 +54,7 @@ const Dashboard = () => {
           )) {
             const installResult = await invoke('check_and_install_nodejs') as string;
             alert(installResult);
-            
+
             if (installResult.includes('installation started')) {
               localStorage.setItem('nodejs_check_done', 'true');
             }
@@ -64,7 +64,7 @@ const Dashboard = () => {
         console.error('Node.js check failed:', error);
       }
     };
-    
+
     checkNodeJS();
   }, []);
 
@@ -73,7 +73,7 @@ const Dashboard = () => {
     const savedProfiles = localStorage.getItem('aezakmi_profiles');
     const savedProxies = localStorage.getItem('aezakmi_proxies');
     const savedFolders = localStorage.getItem('aezakmi_folders');
-    
+
     if (savedProfiles) {
       setProfiles(JSON.parse(savedProfiles));
     }
@@ -165,7 +165,7 @@ const Dashboard = () => {
     try {
       const { invoke } = await import('@tauri-apps/api/core');
       const result = await invoke('check_and_install_playwright') as string;
-      
+
       alert('✅ Статус компонентов:\n\n' + result);
     } catch (err: any) {
       alert('❌ Ошибка проверки:\n\n' + err);
@@ -318,14 +318,14 @@ const Dashboard = () => {
   const handleTestProxy = async (index: number) => {
     const proxy = proxies[index];
     toast.info(`Проверка прокси ${proxy.host}:${proxy.port}...`);
-    
+
     // Симуляция проверки
     setTimeout(() => {
       const updatedProxies = [...proxies];
       const isWorking = Math.random() > 0.3; // 70% шанс что работает
       updatedProxies[index] = { ...proxy, status: isWorking ? 'working' : 'failed' };
       saveProxies(updatedProxies);
-      
+
       if (isWorking) {
         toast.success(`Прокси ${proxy.host}:${proxy.port} работает!`);
       } else {
@@ -337,7 +337,7 @@ const Dashboard = () => {
   // Обновление IP прокси (для SX.ORG)
   const handleRefreshProxyIP = async (index: number) => {
     const proxy = proxies[index];
-    
+
     // Проверяем есть ли refresh_link в metadata
     if (!proxy.metadata?.refresh_link) {
       toast.error('Этот прокси не поддерживает обновление IP');
@@ -394,15 +394,15 @@ const Dashboard = () => {
   // Проверка обновлений
   const handleCheckForUpdates = async () => {
     toast.info('Проверка обновлений...');
-    
+
     try {
       const update = await checkForUpdates();
-      
+
       if (!update) {
         toast.error('Не удалось проверить обновления');
         return;
       }
-      
+
       if (update.available) {
         setUpdateInfo(update);
         setShowUpdateDialog(true);
@@ -419,16 +419,16 @@ const Dashboard = () => {
   // Установка обновления
   const handleInstallUpdate = async () => {
     if (!updateInfo) return;
-    
+
     try {
       toast.info('Скачивание обновления...');
-      
+
       const installerPath = await downloadUpdate(updateInfo.downloadUrl);
-      
+
       toast.success('Запуск установщика...');
-      
+
       await installUpdate(installerPath);
-      
+
       // После вызова installUpdate приложение закроется
     } catch (error: any) {
       console.error('Error installing update:', error);
@@ -441,7 +441,7 @@ const Dashboard = () => {
     const autoCheckUpdates = async () => {
       if (isAutoUpdateEnabled() && shouldAutoCheck()) {
         const update = await checkForUpdates();
-        
+
         if (update && update.available) {
           setUpdateInfo(update);
           setShowUpdateDialog(true);
@@ -449,10 +449,10 @@ const Dashboard = () => {
         }
       }
     };
-    
+
     // Задержка 3 секунды после загрузки приложения
     const timer = setTimeout(autoCheckUpdates, 3000);
-    
+
     return () => clearTimeout(timer);
   }, []);
 
@@ -490,7 +490,7 @@ const Dashboard = () => {
   return (
     <div className="flex h-screen bg-gray-50 relative">
       {/* Background Image */}
-      <div 
+      <div
         className="fixed inset-0 z-0 bg-cover bg-center bg-no-repeat opacity-20"
         style={{ backgroundImage: 'url(/assets/background.webp)' }}
       />
@@ -512,11 +512,10 @@ const Dashboard = () => {
             <button
               key={item.id}
               onClick={() => setActiveView(item.id)}
-              className={`w-full flex items-center justify-between px-4 py-3 rounded-lg transition-colors ${
-                activeView === item.id
+              className={`w-full flex items-center justify-between px-4 py-3 rounded-lg transition-colors ${activeView === item.id
                   ? 'bg-blue-50 text-blue-600'
                   : 'text-gray-700 hover:bg-gray-50'
-              }`}
+                }`}
             >
               <div className="flex items-center gap-3">
                 <item.icon className="w-5 h-5" />
@@ -697,7 +696,7 @@ const Dashboard = () => {
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {/* Папка "Все профили" */}
-              <Card 
+              <Card
                 className={`bg-white/95 backdrop-blur-sm cursor-pointer hover:shadow-lg transition-all ${!selectedFolder ? 'ring-2 ring-blue-500' : ''}`}
                 onClick={() => {
                   setSelectedFolder(null);
@@ -718,7 +717,7 @@ const Dashboard = () => {
               </Card>
 
               {/* Папка "Без папки" */}
-              <Card 
+              <Card
                 className={`bg-white/95 backdrop-blur-sm cursor-pointer hover:shadow-lg transition-all ${selectedFolder === null ? 'ring-2 ring-blue-500' : ''}`}
                 onClick={() => {
                   setSelectedFolder('_no_folder_');
@@ -742,8 +741,8 @@ const Dashboard = () => {
               {folders.map((folder, index) => {
                 const folderProfiles = profiles.filter(p => p.folder === folder);
                 return (
-                  <Card 
-                    key={index} 
+                  <Card
+                    key={index}
                     className={`bg-white/95 backdrop-blur-sm cursor-pointer hover:shadow-lg transition-all ${selectedFolder === folder ? 'ring-2 ring-blue-500' : ''}`}
                     onClick={() => {
                       setSelectedFolder(folder);
@@ -783,7 +782,7 @@ const Dashboard = () => {
             <div className="mb-6 flex justify-between items-center">
               <h2 className="text-2xl font-bold">Управление прокси</h2>
               <div className="flex gap-2">
-                <Button 
+                <Button
                   onClick={() => setIsSXOrgModalOpen(true)}
                   variant="outline"
                   className="bg-blue-100 border-2 border-blue-300 hover:border-blue-400 hover:bg-blue-200 px-4 py-2.5 h-auto"
@@ -821,23 +820,23 @@ const Dashboard = () => {
                           {proxy.metadata?.proxy_type_id === 1 && (
                             <div className="w-6 h-6 bg-gray-100 dark:bg-gray-700 rounded flex items-center justify-center flex-shrink-0">
                               <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                <path d="M5.83333 1.83337H11.1667V0.833374H5.83333V1.83337ZM12 2.66671V13.3334H13V2.66671H12ZM11.1667 14.1667H5.83333V15.1667H11.1667V14.1667ZM5 13.3334V2.66671H4V13.3334H5ZM5.83333 14.1667C5.3731 14.1667 5 13.7936 5 13.3334H4C4 14.3459 4.82081 15.1667 5.83333 15.1667V14.1667ZM12 13.3334C12 13.7936 11.6269 14.1667 11.1667 14.1667V15.1667C12.1792 15.1667 13 14.3459 13 13.3334H12ZM11.1667 1.83337C11.6269 1.83337 12 2.20647 12 2.66671H13C13 1.65419 12.1792 0.833374 11.1667 0.833374V1.83337ZM5.83333 0.833374C4.82081 0.833374 4 1.65418 4 2.66671H5C5 2.20647 5.3731 1.83337 5.83333 1.83337V0.833374Z" fill="#87898F"/>
-                                <path d="M7.16675 12.8334H9.83341" stroke="#87898F" strokeMiterlimit="1.02018" strokeLinecap="round" strokeLinejoin="round"/>
-                                <path d="M8.5 3H8.50667" stroke="#87898F" strokeMiterlimit="1.02018" strokeLinecap="round" strokeLinejoin="round"/>
+                                <path d="M5.83333 1.83337H11.1667V0.833374H5.83333V1.83337ZM12 2.66671V13.3334H13V2.66671H12ZM11.1667 14.1667H5.83333V15.1667H11.1667V14.1667ZM5 13.3334V2.66671H4V13.3334H5ZM5.83333 14.1667C5.3731 14.1667 5 13.7936 5 13.3334H4C4 14.3459 4.82081 15.1667 5.83333 15.1667V14.1667ZM12 13.3334C12 13.7936 11.6269 14.1667 11.1667 14.1667V15.1667C12.1792 15.1667 13 14.3459 13 13.3334H12ZM11.1667 1.83337C11.6269 1.83337 12 2.20647 12 2.66671H13C13 1.65419 12.1792 0.833374 11.1667 0.833374V1.83337ZM5.83333 0.833374C4.82081 0.833374 4 1.65418 4 2.66671H5C5 2.20647 5.3731 1.83337 5.83333 1.83337V0.833374Z" fill="#87898F" />
+                                <path d="M7.16675 12.8334H9.83341" stroke="#87898F" strokeMiterlimit="1.02018" strokeLinecap="round" strokeLinejoin="round" />
+                                <path d="M8.5 3H8.50667" stroke="#87898F" strokeMiterlimit="1.02018" strokeLinecap="round" strokeLinejoin="round" />
                               </svg>
                             </div>
                           )}
                           {proxy.metadata?.proxy_type_id === 2 && (
                             <div className="w-6 h-6 bg-gray-100 dark:bg-gray-700 rounded flex items-center justify-center flex-shrink-0">
                               <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                <path d="M14 12.6667V7.31878C14 6.90732 13.81 6.51892 13.4853 6.26631L8.81859 2.63668C8.33711 2.26219 7.66289 2.26219 7.18141 2.63668L2.51475 6.26631C2.18996 6.51892 2 6.90732 2 7.31878V12.6667C2 13.403 2.59695 14 3.33333 14H5.16667C5.90305 14 6.5 13.403 6.5 12.6667V10.8333C6.5 10.097 7.09695 9.5 7.83333 9.5H8.16667C8.90305 9.5 9.5 10.097 9.5 10.8333V12.6667C9.5 13.403 10.097 14 10.8333 14H12.6667C13.403 14 14 13.403 14 12.6667Z" stroke="#87898F" strokeLinejoin="round"/>
+                                <path d="M14 12.6667V7.31878C14 6.90732 13.81 6.51892 13.4853 6.26631L8.81859 2.63668C8.33711 2.26219 7.66289 2.26219 7.18141 2.63668L2.51475 6.26631C2.18996 6.51892 2 6.90732 2 7.31878V12.6667C2 13.403 2.59695 14 3.33333 14H5.16667C5.90305 14 6.5 13.403 6.5 12.6667V10.8333C6.5 10.097 7.09695 9.5 7.83333 9.5H8.16667C8.90305 9.5 9.5 10.097 9.5 10.8333V12.6667C9.5 13.403 10.097 14 10.8333 14H12.6667C13.403 14 14 13.403 14 12.6667Z" stroke="#87898F" strokeLinejoin="round" />
                               </svg>
                             </div>
                           )}
                           {proxy.metadata?.proxy_type_id === 4 && (
                             <div className="w-6 h-6 bg-gray-100 dark:bg-gray-700 rounded flex items-center justify-center flex-shrink-0">
                               <svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                <path d="M12.8125 4.375V5.5M10 4.375V5.5M7.1875 4.375V5.5M12.8125 8.125V9.25M10 8.125V9.25M7.1875 8.125V9.25M12.8125 11.875V13M10 11.875V13M7.1875 11.875V13M5.5 16.75H14.5C15.1904 16.75 15.75 16.1904 15.75 15.5V6.3125C15.75 5.62215 15.1904 5.0625 14.5 5.0625H5.5C4.80964 5.0625 4.25 5.62215 4.25 6.3125V15.5C4.25 16.1904 4.80964 16.75 5.5 16.75Z" stroke="#87898F" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                                <path d="M12.8125 4.375V5.5M10 4.375V5.5M7.1875 4.375V5.5M12.8125 8.125V9.25M10 8.125V9.25M7.1875 8.125V9.25M12.8125 11.875V13M10 11.875V13M7.1875 11.875V13M5.5 16.75H14.5C15.1904 16.75 15.75 16.1904 15.75 15.5V6.3125C15.75 5.62215 15.1904 5.0625 14.5 5.0625H5.5C4.80964 5.0625 4.25 5.62215 4.25 6.3125V15.5C4.25 16.1904 4.80964 16.75 5.5 16.75Z" stroke="#87898F" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
                               </svg>
                             </div>
                           )}

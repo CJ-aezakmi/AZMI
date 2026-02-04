@@ -71,24 +71,24 @@ export interface Antidetect {
     latitude: number;
     longitude: number;
   };
-  
+
   // Расширенные параметры
   canvas?: CanvasConfig;
   webgl?: WebGLConfig;
   audio?: AudioConfig;
   webrtc?: WebRTCConfig;
   fonts?: FontsConfig;
-  
+
   // Дополнительные параметры браузера
   hardwareConcurrency?: number; // Количество ядер CPU
   deviceMemory?: number; // GB памяти
   doNotTrack?: boolean | null; // null = не отправлять DNT заголовок
-  
+
   // Fingerprint features
   hideAutomation?: boolean; // Скрыть navigator.webdriver
   spoofPlugins?: boolean; // Подменить список плагинов
   spoofBattery?: boolean; // Подменить Battery API
-  
+
   // Продвинутые настройки
   customFingerprint?: string; // JSON строка с кастомным фингерпринтом
 }
@@ -118,7 +118,7 @@ export interface Profile {
   createdAt: string;
   updatedAt?: string;
   status: 'ready' | 'active' | 'inactive';
-  
+
   // Дополнительные метаданные
   lastUsed?: string;
   usageCount?: number;

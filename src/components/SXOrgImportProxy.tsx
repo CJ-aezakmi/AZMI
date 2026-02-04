@@ -62,23 +62,23 @@ const SXOrgImportProxy = ({ client, onProxiesImported }: SXOrgImportProxyProps) 
       toast.error('Выберите хотя бы один прокси');
       return;
     }
-    
+
     // Конвертируем прокси с правильными названиями и метаданными
     const convertedProxies = selected.map(proxy => {
       // Парсим server:port из разных форматов
       let host: string;
       let port: string;
-      
+
       if (proxy.proxy && proxy.proxy.includes(':')) {
         [host, port] = proxy.proxy.split(':');
       } else {
         host = proxy.server || '';
         port = proxy.port?.toString() || '';
       }
-      
+
       // Получаем данные для имени
       let countryCode = (proxy.countryCode || proxy.country_code || '').toLowerCase();
-      
+
       // Если кода страны нет, пытаемся извлечь из логина (формат: xxx-country-XX-...)
       if (!countryCode && proxy.login) {
         const match = proxy.login.match(/country-([A-Z]{2})/i);
@@ -86,17 +86,17 @@ const SXOrgImportProxy = ({ client, onProxiesImported }: SXOrgImportProxyProps) 
           countryCode = match[1].toLowerCase();
         }
       }
-      
+
       // Формируем название страны из кода
       const country = countryCode ? countryCode.toUpperCase() : 'Proxy';
-      
+
       // Всегда формируем название заново для импортированных прокси
       const city = proxy.cityName || proxy.city;
       // Используем город если есть, иначе код страны
       const displayName = city && city.trim() ? city : country;
       const proxyName = `${displayName} - socks5://${host}:${port}`;
-      
-      
+
+
       return {
         ...proxy,
         name: proxyName,
@@ -113,7 +113,7 @@ const SXOrgImportProxy = ({ client, onProxiesImported }: SXOrgImportProxyProps) 
         }
       };
     });
-    
+
     onProxiesImported(convertedProxies);
     toast.success(`Импортировано ${selected.length} прокси`);
     setSelectedProxies(new Set());
@@ -188,8 +188,8 @@ const SXOrgImportProxy = ({ client, onProxiesImported }: SXOrgImportProxyProps) 
           <CheckCircle className="w-4 h-4 mr-2" />
           Выбрать все
         </Button>
-        <Button 
-          onClick={handleImport} 
+        <Button
+          onClick={handleImport}
           disabled={selectedProxies.size === 0}
           size="sm"
         >
@@ -214,19 +214,17 @@ const SXOrgImportProxy = ({ client, onProxiesImported }: SXOrgImportProxyProps) 
           filteredProxies.map(proxy => (
             <div
               key={proxy.id}
-              className={`p-4 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors ${
-                selectedProxies.has(proxy.id) ? 'bg-primary/5' : ''
-              }`}
+              className={`p-4 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors ${selectedProxies.has(proxy.id) ? 'bg-primary/5' : ''
+                }`}
             >
               <div className="flex items-center gap-3">
                 {/* Чекбокс */}
                 <button
                   onClick={() => handleSelectProxy(proxy.id)}
-                  className={`w-5 h-5 rounded border-2 flex items-center justify-center ${
-                    selectedProxies.has(proxy.id)
+                  className={`w-5 h-5 rounded border-2 flex items-center justify-center ${selectedProxies.has(proxy.id)
                       ? 'bg-primary border-primary'
                       : 'border-gray-300 dark:border-gray-600'
-                  }`}
+                    }`}
                 >
                   {selectedProxies.has(proxy.id) && (
                     <CheckCircle className="w-4 h-4 text-white" />
@@ -237,19 +235,19 @@ const SXOrgImportProxy = ({ client, onProxiesImported }: SXOrgImportProxyProps) 
                 <div className="flex gap-1">
                   <div className="w-8 h-8 bg-gray-100 dark:bg-gray-700 rounded flex items-center justify-center">
                     <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-                      <path d="M5.83333 1.83337H11.1667V0.833374H5.83333V1.83337ZM12 2.66671V13.3334H13V2.66671H12ZM11.1667 14.1667H5.83333V15.1667H11.1667V14.1667ZM5 13.3334V2.66671H4V13.3334H5ZM5.83333 14.1667C5.3731 14.1667 5 13.7936 5 13.3334H4C4 14.3459 4.82081 15.1667 5.83333 15.1667V14.1667ZM12 13.3334C12 13.7936 11.6269 14.1667 11.1667 14.1667V15.1667C12.1792 15.1667 13 14.3459 13 13.3334H12ZM11.1667 1.83337C11.6269 1.83337 12 2.20647 12 2.66671H13C13 1.65419 12.1792 0.833374 11.1667 0.833374V1.83337ZM5.83333 0.833374C4.82081 0.833374 4 1.65418 4 2.66671H5C5 2.20647 5.3731 1.83337 5.83333 1.83337V0.833374Z" fill="#87898F"/>
-                      <path d="M7.16675 12.8334H9.83341" stroke="#87898F" strokeMiterlimit="1.02018" strokeLinecap="round" strokeLinejoin="round"/>
-                      <path d="M8.5 3H8.50667" stroke="#87898F" strokeMiterlimit="1.02018" strokeLinecap="round" strokeLinejoin="round"/>
+                      <path d="M5.83333 1.83337H11.1667V0.833374H5.83333V1.83337ZM12 2.66671V13.3334H13V2.66671H12ZM11.1667 14.1667H5.83333V15.1667H11.1667V14.1667ZM5 13.3334V2.66671H4V13.3334H5ZM5.83333 14.1667C5.3731 14.1667 5 13.7936 5 13.3334H4C4 14.3459 4.82081 15.1667 5.83333 15.1667V14.1667ZM12 13.3334C12 13.7936 11.6269 14.1667 11.1667 14.1667V15.1667C12.1792 15.1667 13 14.3459 13 13.3334H12ZM11.1667 1.83337C11.6269 1.83337 12 2.20647 12 2.66671H13C13 1.65419 12.1792 0.833374 11.1667 0.833374V1.83337ZM5.83333 0.833374C4.82081 0.833374 4 1.65418 4 2.66671H5C5 2.20647 5.3731 1.83337 5.83333 1.83337V0.833374Z" fill="#87898F" />
+                      <path d="M7.16675 12.8334H9.83341" stroke="#87898F" strokeMiterlimit="1.02018" strokeLinecap="round" strokeLinejoin="round" />
+                      <path d="M8.5 3H8.50667" stroke="#87898F" strokeMiterlimit="1.02018" strokeLinecap="round" strokeLinejoin="round" />
                     </svg>
                   </div>
                   <div className="w-8 h-8 bg-gray-100 dark:bg-gray-700 rounded flex items-center justify-center">
                     <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-                      <path d="M14 12.6667V7.31878C14 6.90732 13.81 6.51892 13.4853 6.26631L8.81859 2.63668C8.33711 2.26219 7.66289 2.26219 7.18141 2.63668L2.51475 6.26631C2.18996 6.51892 2 6.90732 2 7.31878V12.6667C2 13.403 2.59695 14 3.33333 14H5.16667C5.90305 14 6.5 13.403 6.5 12.6667V10.8333C6.5 10.097 7.09695 9.5 7.83333 9.5H8.16667C8.90305 9.5 9.5 10.097 9.5 10.8333V12.6667C9.5 13.403 10.097 14 10.8333 14H12.6667C13.403 14 14 13.403 14 12.6667Z" stroke="#87898F" strokeLinejoin="round"/>
+                      <path d="M14 12.6667V7.31878C14 6.90732 13.81 6.51892 13.4853 6.26631L8.81859 2.63668C8.33711 2.26219 7.66289 2.26219 7.18141 2.63668L2.51475 6.26631C2.18996 6.51892 2 6.90732 2 7.31878V12.6667C2 13.403 2.59695 14 3.33333 14H5.16667C5.90305 14 6.5 13.403 6.5 12.6667V10.8333C6.5 10.097 7.09695 9.5 7.83333 9.5H8.16667C8.90305 9.5 9.5 10.097 9.5 10.8333V12.6667C9.5 13.403 10.097 14 10.8333 14H12.6667C13.403 14 14 13.403 14 12.6667Z" stroke="#87898F" strokeLinejoin="round" />
                     </svg>
                   </div>
                   <div className="w-8 h-8 bg-gray-100 dark:bg-gray-700 rounded flex items-center justify-center">
                     <svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
-                      <path d="M12.8125 4.375V5.5M10 4.375V5.5M7.1875 4.375V5.5M12.8125 7.75V8.875M10 7.75V8.875M7.1875 7.75V8.875M12.8125 11.125V12.25M10 11.125V12.25M7.1875 11.125V12.25M15.625 18.4375V2.125C15.625 1.81394 15.3736 1.5625 15.0625 1.5625H4.9375C4.62644 1.5625 4.375 1.81394 4.375 2.125V18.4375H8.3125V15.0625H10H11.6875V18.4375H15.625Z" stroke="#87898F" strokeWidth="1.125" strokeLinecap="round" strokeLinejoin="round"/>
+                      <path d="M12.8125 4.375V5.5M10 4.375V5.5M7.1875 4.375V5.5M12.8125 7.75V8.875M10 7.75V8.875M7.1875 7.75V8.875M12.8125 11.125V12.25M10 11.125V12.25M7.1875 11.125V12.25M15.625 18.4375V2.125C15.625 1.81394 15.3736 1.5625 15.0625 1.5625H4.9375C4.62644 1.5625 4.375 1.81394 4.375 2.125V18.4375H8.3125V15.0625H10H11.6875V18.4375H15.625Z" stroke="#87898F" strokeWidth="1.125" strokeLinecap="round" strokeLinejoin="round" />
                     </svg>
                   </div>
                 </div>

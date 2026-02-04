@@ -108,20 +108,20 @@ class FingerprintGenerator {
 
   generate(os = 'windows', options = {}) {
     const osData = this.fingerprints[os.toLowerCase()] || this.fingerprints.windows;
-    
-    const userAgent = options.userAgent || 
+
+    const userAgent = options.userAgent ||
       osData.userAgents[Math.floor(Math.random() * osData.userAgents.length)];
-    
-    const screen = options.screen || 
+
+    const screen = options.screen ||
       osData.screens[Math.floor(Math.random() * osData.screens.length)];
-    
-    const platform = options.platform || 
+
+    const platform = options.platform ||
       osData.platforms[Math.floor(Math.random() * osData.platforms.length)];
 
     // Генерируем реалистичные параметры
     const hardwareConcurrency = options.cores || (Math.random() > 0.5 ? 8 : 4);
     const deviceMemory = options.memory || (Math.random() > 0.5 ? 8 : 16);
-    
+
     // WebGL Vendor/Renderer на основе статистики
     const webglConfigs = [
       { vendor: 'Intel Inc.', renderer: 'Intel Iris OpenGL Engine' },
@@ -302,12 +302,12 @@ class ProxyTunnel {
   async create(upstreamProxy) {
     try {
       console.log('[PROXY TUNNEL] Создание туннеля для:', upstreamProxy.server);
-      
+
       // Используем proxy-chain для создания локального туннеля
       const { default: ProxyChain } = await import('proxy-chain');
-      
+
       let proxyUrl = upstreamProxy.server;
-      
+
       // Если есть credentials, добавляем их в URL
       if (upstreamProxy.username && upstreamProxy.password) {
         console.log('[PROXY TUNNEL] Добавление авторизации');
@@ -323,11 +323,11 @@ class ProxyTunnel {
       // Создаем анонимный туннель
       console.log('[PROXY TUNNEL] Вызов anonymizeProxy...');
       const anonymousProxy = await ProxyChain.anonymizeProxy(proxyUrl);
-      
+
       console.log(`[PROXY] Туннель создан: ${anonymousProxy} -> ${upstreamProxy.server}`);
-      
+
       this.tunnels.set(anonymousProxy, proxyUrl);
-      
+
       return {
         server: anonymousProxy,
         original: upstreamProxy.server,
@@ -432,11 +432,11 @@ class AdvancedAntidetectLauncher {
 
     // Выбираем браузер
     let browser, context, page;
-    
+
     if (browserType === 'firefox' || browserType === 'camoufox') {
       // Firefox / Camoufox (лучше для антидетекта)
       browser = firefox;
-      
+
       const firefoxArgs = [
         '-profile', profileDir,
         '-no-remote',
@@ -450,14 +450,14 @@ class AdvancedAntidetectLauncher {
           'privacy.trackingprotection.enabled': true,
           'privacy.donottrackheader.enabled': false, // DNT устарел
           'dom.webdriver.enabled': false,
-          
+
           // WebRTC
           'media.peerconnection.enabled': !antidetect.webrtc.block,
           'media.navigator.enabled': !antidetect.webrtc.block,
-          
+
           // Canvas
           'privacy.resistFingerprinting': false, // Мы используем свою защиту
-          
+
           // Performance
           'browser.cache.disk.enable': true,
           'browser.cache.memory.enable': true,
@@ -474,11 +474,11 @@ class AdvancedAntidetectLauncher {
 
       context = await browser.launchPersistentContext(profileDir, launchOptions);
       page = context.pages()[0] || await context.newPage();
-      
+
     } else {
       // Chromium
       browser = chromium;
-      
+
       const launchOptions = {
         headless: false,
         args,
@@ -506,7 +506,7 @@ class AdvancedAntidetectLauncher {
     await page.addInitScript(() => {
       // Переопределяем Date.prototype.getTimezoneOffset
       const originalGetTimezoneOffset = Date.prototype.getTimezoneOffset;
-      Date.prototype.getTimezoneOffset = function() {
+      Date.prototype.getTimezoneOffset = function () {
         return -180; // Europe/Moscow offset
       };
 
@@ -517,8 +517,8 @@ class AdvancedAntidetectLauncher {
           chargingTime: 0,
           dischargingTime: Infinity,
           level: 1,
-          addEventListener: () => {},
-          removeEventListener: () => {},
+          addEventListener: () => { },
+          removeEventListener: () => { },
         });
       }
     });
@@ -542,7 +542,7 @@ class AdvancedAntidetectLauncher {
           .then(data => data.ip)
           .catch(() => null)
       );
-      
+
       if (detectedIP) {
         console.log(`[IP] Обнаружен IP: ${detectedIP}`);
       }
@@ -579,7 +579,7 @@ class AdvancedAntidetectLauncher {
 async function main() {
   try {
     const payloadB64 = process.argv.find(arg => arg.startsWith('--payload='))?.split('=')[1];
-    
+
     if (!payloadB64) {
       throw new Error('Missing --payload argument');
     }
@@ -589,7 +589,7 @@ async function main() {
 
     const launcher = new AdvancedAntidetectLauncher();
     await launcher.launch(payload);
-    
+
   } catch (error) {
     console.error('[ERROR]', error);
     process.exit(1);

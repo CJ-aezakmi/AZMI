@@ -105,7 +105,7 @@ const ProfileModal = ({ open, onOpenChange, onSave, profile, proxies, folders = 
   const parseProxyString = (proxyString: string): Partial<typeof formData> | null => {
     try {
       const trimmed = proxyString.trim();
-      
+
       // URL формат: protocol://username:password@host:port
       if (trimmed.includes('://')) {
         const url = new URL(trimmed);
@@ -124,7 +124,7 @@ const ProfileModal = ({ open, onOpenChange, onSave, profile, proxies, folders = 
         const [auth, hostPort] = trimmed.split('@');
         const [username, password] = auth.split(':');
         const [host, port] = hostPort.split(':');
-        
+
         return {
           proxyEnabled: true,
           proxyType: 'http',
@@ -147,7 +147,7 @@ const ProfileModal = ({ open, onOpenChange, onSave, profile, proxies, folders = 
           proxyPassword: parts[3] || '',
         };
       }
-      
+
       // host:port
       if (parts.length === 2) {
         return {
@@ -257,11 +257,11 @@ const ProfileModal = ({ open, onOpenChange, onSave, profile, proxies, folders = 
                 placeholder="Мой профиль"
               />
             </div>
-            
+
             <div>
               <Label htmlFor="folder">Папка</Label>
-              <Select 
-                value={formData.folder} 
+              <Select
+                value={formData.folder}
                 onValueChange={(value) => setFormData({ ...formData, folder: value === '_none_' ? '' : value })}
               >
                 <SelectTrigger>
@@ -275,7 +275,7 @@ const ProfileModal = ({ open, onOpenChange, onSave, profile, proxies, folders = 
                 </SelectContent>
               </Select>
             </div>
-            
+
             <div>
               <Label htmlFor="notes">Заметки</Label>
               <Textarea

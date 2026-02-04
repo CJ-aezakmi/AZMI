@@ -98,7 +98,7 @@ export class SXOrgClient {
   private async request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
     const separator = endpoint.includes('?') ? '&' : '?';
     const url = `${API_BASE}${endpoint}${separator}apiKey=${this.apiKey}`;
-    
+
     const response = await fetch(url, {
       ...options,
       headers: {
@@ -156,7 +156,7 @@ export class SXOrgClient {
   // Получить список прокси
   async getProxies(): Promise<SXOrgProxyList> {
     const response = await this.request<SXOrgProxyList>('/proxy/ports');
-    
+
     // API возвращает данные в message.proxies, но мы нормализуем в data
     if (response.message?.proxies) {
       return {
@@ -164,7 +164,7 @@ export class SXOrgClient {
         data: response.message.proxies,
       };
     }
-    
+
     return response;
   }
 

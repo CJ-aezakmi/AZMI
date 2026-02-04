@@ -22,7 +22,7 @@ const UpdateDialog = ({ open, updateInfo, onUpdate, onLater }: UpdateDialogProps
   const handleUpdate = async () => {
     setIsDownloading(true);
     setError(null);
-    
+
     try {
       await onUpdate();
     } catch (err: any) {
@@ -74,7 +74,7 @@ const UpdateDialog = ({ open, updateInfo, onUpdate, onLater }: UpdateDialogProps
                   {updateInfo.releaseNotes}
                 </div>
               </div>
-              
+
               <div className="flex items-center gap-2 text-sm text-gray-600">
                 <CheckCircle className="w-4 h-4 text-green-600" />
                 <span>

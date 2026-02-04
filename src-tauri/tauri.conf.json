@@ -25,7 +25,9 @@
   },
   "bundle": {
     "active": true,
-    "targets": ["nsis"],
+    "targets": [
+      "nsis"
+    ],
     "publisher": "AEZAKMI Team",
     "copyright": "Copyright © 2025 AEZAKMI Team. All rights reserved.",
     "homepage": "https://github.com/CJ-aezakmi/aezakmi",
@@ -47,12 +49,13 @@
       "nsis": {
         "installerIcon": "icons/icon.ico",
         "installMode": "perMachine",
-        "languages": ["English", "Russian"],
+        "languages": [
+          "English",
+          "Russian"
+        ],
         "displayLanguageSelector": true
       }
     }
   },
-  
   "plugins": {}
-  
 }
