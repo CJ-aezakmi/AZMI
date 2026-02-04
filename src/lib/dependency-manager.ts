@@ -173,25 +173,25 @@ class DependencyManager {
   // Установка портативного Node.js
   async installPortableNodeJs(onProgress?: (message: string) => void): Promise<boolean> {
     try {
-      onProgress?.('Распаковка портативного Node.js...');
-      
-      // Создаём директорию для портативного Node.js
-      await mkdir(this.nodePortablePath, { recursive: true });
+      // Используем системный Node.js если он есть
+      const systemNode = await this.checkSystemNodeJs();
+      if (systemNode) {
+        return true;
+      }
 
-      // Копируем Node.js из resources (должен быть упакован в установщик)
-      const nodeResourcePath = await join(this.resourcePath, 'node-portable');
-      
-      // Используем Tauri command для копирования
-      await invoke('copy_directory', {
-        src: nodeResourcePath,
-        dst: this.nodePortablePath,
-      });
-
-      onProgress?.('Node.js успешно установлен');
-      return true;
+      onProgress?.('Требуется Node.js');
+      return false;
     } catch (err: any) {
-      console.error('Failed to install portable Node.js:', err);
-      onProgress?.(`Ошибка установки Node.js: ${err.message}`);
+      return false;
+    }
+  }
+
+  private async checkSystemNodeJs(): Promise<boolean> {
+    try {
+      const command = Command.create('node', ['--version']);
+      const output = await command.execute();
+      return output.code === 0;
+    } catch {
       return false;
     }
   }
@@ -204,61 +204,34 @@ class DependencyManager {
         throw new Error('Node.js не установлен');
       }
 
-      onProgress?.('Установка браузеров Playwright...');
+      const env = {
+        'PLAYWRIGHT_BROWSERS_PATH': this.playwrightCachePath
+      };
 
-      // Проверяем, упакованы ли браузеры в resources
-      const browsersResourcePath = await join(this.resourcePath, 'playwright-cache');
-      const resourceBrowsersExist = await exists(browsersResourcePath);
+      await this.setPlaywrightEnv();
 
-      if (resourceBrowsersExist) {
-        // Копируем предустановленные браузеры
-        onProgress?.('Распаковка браузеров из установщика...');
-        await mkdir(this.playwrightCachePath, { recursive: true });
-        
-        await invoke('copy_directory', {
-          src: browsersResourcePath,
-          dst: this.playwrightCachePath,
-        });
+      // Устанавливаем Playwright CLI
+      const installCommand = Command.create('npm', ['install', '-g', 'playwright'], { env });
+      await installCommand.execute();
 
-        // Устанавливаем переменную окружения
-        await this.setPlaywrightEnv();
-        
-        onProgress?.('Браузеры успешно установлены');
+      // Скачиваем браузеры
+      onProgress?.('Загрузка браузера');
+      const browsersCommand = Command.create('npx', [
+        'playwright',
+        'install',
+        'chromium'
+      ], { env });
+
+      const browsersResult = await browsersCommand.execute();
+      
+      if (browsersResult.code === 0) {
+        onProgress?.('✅');
         return true;
       } else {
-        // Скачиваем браузеры через Playwright
-        onProgress?.('Загрузка браузеров Playwright (это может занять несколько минут)...');
-        
-        const npxPath = nodeStatus.portable 
-          ? await join(this.nodePortablePath, 'npx.cmd')
-          : 'npx';
-
-        // Устанавливаем путь к кэшу
-        await this.setPlaywrightEnv();
-
-        const command = Command.create(npxPath, [
-          'playwright',
-          'install',
-          'chromium',
-          '--with-deps'
-        ], {
-          env: {
-            'PLAYWRIGHT_BROWSERS_PATH': this.playwrightCachePath
-          }
-        });
-
-        const output = await command.execute();
-        
-        if (output.code === 0) {
-          onProgress?.('Браузеры успешно установлены');
-          return true;
-        } else {
-          throw new Error(`Ошибка установки: ${output.stderr}`);
-        }
+        throw new Error('Ошибка установки браузеров');
       }
     } catch (err: any) {
       console.error('Failed to install Playwright browsers:', err);
-      onProgress?.(`Ошибка установки браузеров: ${err.message}`);
       return false;
     }
   }
