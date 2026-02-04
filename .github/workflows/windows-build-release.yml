@@ -28,6 +28,37 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Download and prepare Node.js portable
+        run: |
+          Write-Host "Downloading Node.js portable..."
+          $nodeUrl = "https://nodejs.org/dist/v18.20.5/node-v18.20.5-win-x64.zip"
+          $nodeZip = "node-portable.zip"
+          Invoke-WebRequest -Uri $nodeUrl -OutFile $nodeZip
+          
+          Write-Host "Extracting Node.js..."
+          Expand-Archive -Path $nodeZip -DestinationPath "node-temp" -Force
+          
+          # Переименовываем папку в node
+          $extractedFolder = Get-ChildItem -Path "node-temp" -Directory | Select-Object -First 1
+          Move-Item -Path $extractedFolder.FullName -Destination "node" -Force
+          Remove-Item -Path "node-temp" -Recurse -Force
+          Remove-Item -Path $nodeZip -Force
+          
+          Write-Host "Node.js portable готов"
+        shell: pwsh
+
+      - name: Install Playwright and download browsers
+        run: |
+          Write-Host "Installing Playwright globally..."
+          npm install -g playwright
+          
+          Write-Host "Downloading Chromium browser..."
+          $env:PLAYWRIGHT_BROWSERS_PATH = "$PWD/playwright-cache"
+          npx playwright install chromium
+          
+          Write-Host "Playwright browsers готовы"
+        shell: pwsh
+
       - name: Install pkg (for bundling launcher)
         run: npm install -g pkg
 

@@ -173,7 +173,23 @@ class DependencyManager {
   // Установка портативного Node.js
   async installPortableNodeJs(onProgress?: (message: string) => void): Promise<boolean> {
     try {
-      // Используем системный Node.js если он есть
+      onProgress?.('Установка Node.js...');
+      
+      // Проверяем упакованный Node.js в resources
+      const nodeResourcePath = await join(this.resourcePath, 'node');
+      const resourceExists = await exists(nodeResourcePath);
+      
+      if (resourceExists) {
+        // Копируем из resources
+        await mkdir(this.nodePortablePath, { recursive: true });
+        await invoke('copy_directory', {
+          src: nodeResourcePath,
+          dst: this.nodePortablePath,
+        });
+        return true;
+      }
+      
+      // Если в resources нет - проверяем системный
       const systemNode = await this.checkSystemNodeJs();
       if (systemNode) {
         return true;
@@ -182,6 +198,7 @@ class DependencyManager {
       onProgress?.('Требуется Node.js');
       return false;
     } catch (err: any) {
+      console.error('Node.js installation failed:', err);
       return false;
     }
   }
@@ -204,32 +221,41 @@ class DependencyManager {
         throw new Error('Node.js не установлен');
       }
 
-      const env = {
-        'PLAYWRIGHT_BROWSERS_PATH': this.playwrightCachePath
-      };
+      onProgress?.('Установка браузеров...');
 
+      // Проверяем упакованные браузеры в resources
+      const browsersResourcePath = await join(this.resourcePath, 'playwright-cache');
+      const resourceExists = await exists(browsersResourcePath);
+
+      if (resourceExists) {
+        // Копируем из resources
+        await mkdir(this.playwrightCachePath, { recursive: true });
+        await invoke('copy_directory', {
+          src: browsersResourcePath,
+          dst: this.playwrightCachePath,
+        });
+        await this.setPlaywrightEnv();
+        onProgress?.('✅');
+        return true;
+      }
+
+      // Если в resources нет - скачиваем
+      onProgress?.('Загрузка браузера');
+      const env = { 'PLAYWRIGHT_BROWSERS_PATH': this.playwrightCachePath };
       await this.setPlaywrightEnv();
 
-      // Устанавливаем Playwright CLI
       const installCommand = Command.create('npm', ['install', '-g', 'playwright'], { env });
       await installCommand.execute();
 
-      // Скачиваем браузеры
-      onProgress?.('Загрузка браузера');
-      const browsersCommand = Command.create('npx', [
-        'playwright',
-        'install',
-        'chromium'
-      ], { env });
-
-      const browsersResult = await browsersCommand.execute();
+      const browsersCommand = Command.create('npx', ['playwright', 'install', 'chromium'], { env });
+      const result = await browsersCommand.execute();
       
-      if (browsersResult.code === 0) {
+      if (result.code === 0) {
         onProgress?.('✅');
         return true;
-      } else {
-        throw new Error('Ошибка установки браузеров');
       }
+      
+      return false;
     } catch (err: any) {
       console.error('Failed to install Playwright browsers:', err);
       return false;
