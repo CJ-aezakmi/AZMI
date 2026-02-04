@@ -37,12 +37,7 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ],
-    "resources": {
-      "../../../node/**": "node",
-      "../../../playwright/**": "playwright",
-      "../../../playwright-cache/**": "playwright-cache",
-      "../../../scripts/**": "scripts"
-    },
+    "resources": [],
     "windows": {
       "certificateThumbprint": null,
       "digestAlgorithm": "sha256",
