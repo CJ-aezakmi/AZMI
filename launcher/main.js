@@ -68,40 +68,67 @@ app.on('window-all-closed', () => {
 
 async function startLaunchSequence() {
     try {
-        updateStatus('Проверка установки...', 10);
+        updateStatus('>>> Проверка установки...', 10);
 
         const isInstalled = Boolean(findInstalledExe());
 
         if (!isInstalled) {
-            updateStatus('AEZAKMI не установлен. Скачивание...', 20);
-            await downloadAndInstallApp();
-        } else {
-            updateStatus('Проверка обновлений...', 30);
-            const hasUpdate = await checkForUpdates();
-
-            if (hasUpdate) {
-                updateStatus('Доступно обновление! Скачивание...', 40);
+            updateStatus('>>> AEZAKMI не установлен. Начинаем установку...', 20);
+            
+            // Пытаемся скачать с GitHub, если не получится - пропускаем
+            try {
                 await downloadAndInstallApp();
+            } catch (error) {
+                console.error('[Launcher] Не удалось скачать с GitHub:', error.message);
+                updateStatus('>>> Установите AEZAKMI вручную и перезапустите лаунчер', 0);
+                
+                // Открываем страницу релизов
+                const { shell } = require('electron');
+                shell.openExternal('https://github.com/CJ-aezakmi/AZMI/releases');
+                
+                // Ждём 10 секунд чтобы пользователь прочитал
+                await new Promise(resolve => setTimeout(resolve, 10000));
+                app.quit();
+                return;
+            }
+        } else {
+            updateStatus('>>> Проверка обновлений...', 30);
+            
+            // Проверяем обновления только если есть релизы
+            try {
+                const hasUpdate = await checkForUpdates();
+                if (hasUpdate) {
+                    updateStatus('>>> Доступно обновление! Скачивание...', 40);
+                    await downloadAndInstallApp();
+                }
+            } catch (error) {
+                console.log('[Launcher] Пропускаем проверку обновлений:', error.message);
+                // Продолжаем без обновлений
             }
         }
 
-        updateStatus('Проверка Playwright/Chromium...', 60);
+        updateStatus('>>> Проверка Playwright/Chromium...', 60);
         await checkAndInstallPlaywright();
 
-        updateStatus('Проверка зависимостей...', 80);
+        updateStatus('>>> Проверка зависимостей...', 80);
         
-        updateStatus('Запуск AEZAKMI...', 95);
+        updateStatus('>>> Запуск AEZAKMI...', 95);
         await launchApp();
 
-        updateStatus('Готово!', 100);
+        updateStatus('>>> ГОТОВО!', 100);
 
         setTimeout(() => {
             app.quit();
         }, 1000);
 
     } catch (error) {
-        updateStatus(`Ошибка: ${error.message}`, 0);
+        updateStatus(`>>> ОШИБКА: ${error.message}`, 0);
         console.error('[Launcher] Error:', error);
+        
+        // Не закрываем лаунчер чтобы пользователь увидел ошибку
+        setTimeout(() => {
+            app.quit();
+        }, 10000);
     }
 }
 
