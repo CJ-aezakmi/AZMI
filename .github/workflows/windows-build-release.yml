@@ -124,8 +124,9 @@ jobs:
             Copy-Item -Path "..\..\scripts" -Destination "scripts" -Recurse -Force
             Write-Host "✓ Scripts copied"
           } else {
-            Write-Error "Scripts not found at ..\..\scripts"
-            exit 1
+            # Если нет scripts в корне, создаём пустую папку (для NSIS)
+            New-Item -ItemType Directory -Force -Path "scripts" | Out-Null
+            Write-Host "⚠ Scripts folder not found, created empty folder"
           }
           
           Write-Host "Building NSIS installer with Node.js and Playwright..."

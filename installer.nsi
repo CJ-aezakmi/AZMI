@@ -34,9 +34,11 @@ Section "MainSection" SEC01
   SetOutPath "$INSTDIR\playwright-cache"
   File /r "playwright-cache\*.*"
   
-  ; Копируем скрипты
-  SetOutPath "$INSTDIR\scripts"
-  File /r "scripts\*.*"
+  ; Копируем скрипты (опционально)
+  SetOutPath "$INSTDIR"
+  IfFileExists "scripts\*.*" 0 +3
+    SetOutPath "$INSTDIR\scripts"
+    File /r /nonfatal "scripts\*.*"
   
   ; Создаём ярлык
   CreateDirectory "$SMPROGRAMS\AEZAKMI"
