@@ -38,9 +38,7 @@
       "icons/icon.ico"
     ],
     "resources": [
-      "../node/**",
-      "../playwright-cache/**",
-      "../scripts/**"
+      "../scripts/launch_puppeteer.cjs"
     ],
     "windows": {
       "certificateThumbprint": null,

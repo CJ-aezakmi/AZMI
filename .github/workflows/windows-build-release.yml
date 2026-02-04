@@ -89,11 +89,33 @@ jobs:
           CARGO_HOME: ${{ runner.temp }}/cargo
         run: pnpm tauri build --target x86_64-pc-windows-msvc
 
+      - name: Package Node.js and Playwright with installer
+        run: |
+          Write-Host "Copying Node.js and Playwright to bundle..."
+          $bundlePath = "src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis"
+          
+          # Создаём папку resources рядом с установщиком
+          New-Item -ItemType Directory -Force -Path "$bundlePath/resources"
+          
+          # Копируем Node.js
+          Copy-Item -Path "node" -Destination "$bundlePath/resources/node" -Recurse -Force
+          
+          # Копируем Playwright cache
+          Copy-Item -Path "playwright-cache" -Destination "$bundlePath/resources/playwright-cache" -Recurse -Force
+          
+          # Копируем скрипты
+          Copy-Item -Path "scripts" -Destination "$bundlePath/resources/scripts" -Recurse -Force
+          
+          Write-Host "Resources packaged successfully"
+        shell: pwsh
+
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         with:
           name: tauri-windows-bundle
-          path: src-tauri/target/x86_64-pc-windows-msvc/release/bundle/**
+          path: |
+            src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/*.exe
+            src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/resources/**
 
       - name: Create GitHub Release (on tag)
         if: startsWith(github.ref, 'refs/tags/')
