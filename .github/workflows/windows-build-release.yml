@@ -38,11 +38,14 @@ jobs:
           Write-Host "Extracting Node.js..."
           Expand-Archive -Path $nodeZip -DestinationPath "node-temp" -Force
           
-          # Переименовываем папку в node
+          # Переименовываем папку в node в корень репозитория
           $extractedFolder = Get-ChildItem -Path "node-temp" -Directory | Select-Object -First 1
-          Move-Item -Path $extractedFolder.FullName -Destination "node" -Force
+          Move-Item -Path $extractedFolder.FullName -Destination "../../node" -Force
           Remove-Item -Path "node-temp" -Recurse -Force
           Remove-Item -Path $nodeZip -Force
+          
+          Write-Host "Node.js portable готов в ../../node"
+        shell: pwsh
           
           Write-Host "Node.js portable готов"
         shell: pwsh
@@ -53,10 +56,10 @@ jobs:
           npm install -g playwright
           
           Write-Host "Downloading Chromium browser..."
-          $env:PLAYWRIGHT_BROWSERS_PATH = "$PWD/playwright-cache"
+          $env:PLAYWRIGHT_BROWSERS_PATH = "../../playwright-cache"
           npx playwright install chromium
           
-          Write-Host "Playwright browsers готовы"
+          Write-Host "Playwright browsers готовы в ../../playwright-cache"
         shell: pwsh
 
       - name: Install pkg (for bundling launcher)
