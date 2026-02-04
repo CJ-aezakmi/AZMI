@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   build-windows:
-    name: Build on Windows and create release
+    name: Build AEZAKMI Pro
     runs-on: windows-latest
 
     steps:
@@ -20,16 +20,12 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '18'
+          node-version: '20'
 
       - name: Setup pnpm
         run: npm install -g pnpm
 
-      # ========================================
-      # BUILD TAURI APP
-      # ========================================
-      
-      - name: Install Tauri dependencies
+      - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
       - name: Build web assets
@@ -47,41 +43,12 @@ jobs:
           CARGO_HOME: ${{ runner.temp }}/cargo
         run: pnpm tauri build --target x86_64-pc-windows-msvc
 
-      # ========================================
-      # BUILD LAUNCHER
-      # ========================================
-      
-      - name: Install Launcher dependencies
-        run: |
-          cd launcher
-          npm install
-
-      - name: Build Launcher
-        run: |
-          cd launcher
-          npm run build
-
-      # ========================================
-      # UPLOAD ARTIFACTS
-      # ========================================
-
-      - name: Upload Tauri installer
+      - name: Upload installer
         uses: actions/upload-artifact@v4
         with:
-          name: aezakmi-app-installer
+          name: aezakmi-installer
           path: |
             src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/*.exe
-
-      - name: Upload Launcher installer
-        uses: actions/upload-artifact@v4
-        with:
-          name: aezakmi-launcher-installer
-          path: |
-            launcher/dist/*.exe
-
-      # ========================================
-      # CREATE RELEASE
-      # ========================================
 
       - name: Create GitHub Release (on tag)
         if: startsWith(github.ref, 'refs/tags/')
@@ -89,27 +56,28 @@ jobs:
         with:
           artifacts: |
             src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/*.exe
-            launcher/dist/*.exe
           token: ${{ secrets.GITHUB_TOKEN }}
           draft: false
           prerelease: false
           allowUpdates: true
           replacesArtifacts: true
           body: |
+            # AEZAKMI Pro v2.0.0 - Windows Edition
+            
             ## 📦 Установка
             
-            **Для пользователей:**
-            1. Скачай `AEZAKMI Launcher Setup.exe`
-            2. Запусти установщик
-            3. Лаунчер автоматически скачает и установит AEZAKMI
-            4. Лаунчер также установит все зависимости (Node.js, Playwright, Chromium)
+            1. Скачайте **AEZAKMI_2.0.0_x64-setup.exe**
+            2. Запустите установщик
+            3. При первом запуске приложение автоматически установит:
+               - Node.js 20 Portable
+               - Playwright + Chromium
+            4. Дождитесь завершения установки (~5-10 минут)
+            5. Приложение готово к работе!
             
-            **Прямая установка (без лаунчера):**
-            1. Скачай `AEZAKMI_x64-setup.exe`
-            2. Установи приложение
-            3. При первом запуске будут автоматически скачаны зависимости
+            ## 🔑 Лицензионные ключи
             
-            ## ✨ Что нового
-            - Electron-лаунчер для автоматической установки
-            - Автоматическая загрузка Node.js + Playwright + Chromium
-            - Проверка обновлений при запуске
+            Используйте один из ключей из `LICENSE_KEYS.md`
+            
+            ---
+            
+            **Примечание:** Первый запуск занимает 5-10 минут для установки зависимостей.

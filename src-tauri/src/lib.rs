@@ -40,7 +40,11 @@ pub fn run() {
             download_update,
             install_update,
             copy_directory,
-            write_file
+            write_file,
+            check_node_installed,
+            check_playwright_installed,
+            install_node_runtime,
+            install_playwright_runtime
         ])
         .run(tauri::generate_context!())
         .expect("error")
@@ -816,5 +820,47 @@ async fn write_file(path: String, contents: String) -> Result<(), String> {
     fs::write(file_path, contents)
         .map_err(|e| format!("Ошибка записи файла: {}", e))?;
     
+    Ok(())
+}
+
+/// Проверяет установлен ли Node.js
+#[tauri::command]
+async fn check_node_installed(app: tauri::AppHandle) -> Result<bool, String> {
+    use std::path::PathBuf;
+    
+    let app_data = app.path().app_local_data_dir()
+        .map_err(|e| format!("Ошибка получения пути: {}", e))?;
+    
+    let node_exe = app_data.join("runtime").join("node").join("node.exe");
+    Ok(node_exe.exists())
+}
+
+/// Проверяет установлен ли Playwright
+#[tauri::command]
+async fn check_playwright_installed(app: tauri::AppHandle) -> Result<bool, String> {
+    use std::path::PathBuf;
+    
+    let app_data = app.path().app_local_data_dir()
+        .map_err(|e| format!("Ошибка получения пути: {}", e))?;
+    
+    let playwright_dir = app_data.join("runtime").join("node_modules").join("playwright");
+    Ok(playwright_dir.exists())
+}
+
+/// Устанавливает Node.js runtime
+#[tauri::command]
+async fn install_node_runtime(app: tauri::AppHandle) -> Result<(), String> {
+    println!("[Runtime] Installing Node.js...");
+    check_and_install_nodejs(app.clone()).await?;
+    println!("[Runtime] Node.js installed successfully");
+    Ok(())
+}
+
+/// Устанавливает Playwright runtime
+#[tauri::command]
+async fn install_playwright_runtime(app: tauri::AppHandle) -> Result<(), String> {
+    println!("[Runtime] Installing Playwright...");
+    check_and_install_playwright(app.clone()).await?;
+    println!("[Runtime] Playwright installed successfully");
     Ok(())
 }
