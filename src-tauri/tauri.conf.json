@@ -37,11 +37,22 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ],
-    "resources": [],
+    "resources": {
+      "../../../node/**": "node",
+      "../../../playwright/**": "playwright",
+      "../../../playwright-cache/**": "playwright-cache",
+      "../../../scripts/**": "scripts"
+    },
     "windows": {
       "certificateThumbprint": null,
       "digestAlgorithm": "sha256",
-      "timestampUrl": ""
+      "timestampUrl": "",
+      "nsis": {
+        "installerIcon": "icons/icon.ico",
+        "installMode": "perMachine",
+        "languages": ["English", "Russian"],
+        "displayLanguageSelector": true
+      }
     }
   },
   

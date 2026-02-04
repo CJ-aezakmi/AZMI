@@ -38,7 +38,9 @@ pub fn run() {
             validate_license_key,
             check_and_install_playwright,
             download_update,
-            install_update
+            install_update,
+            copy_directory,
+            write_file
         ])
         .run(tauri::generate_context!())
         .expect("error")
@@ -752,4 +754,67 @@ async fn install_update(installer_path: String) -> Result<(), String> {
     {
         return Err("Автообновление поддерживается только на Windows".to_string());
     }
+}
+/// Копирует директорию рекурсивно
+#[tauri::command]
+async fn copy_directory(src: String, dst: String) -> Result<(), String> {
+    use std::path::Path;
+    use std::fs;
+    
+    let src_path = Path::new(&src);
+    let dst_path = Path::new(&dst);
+    
+    if !src_path.exists() {
+        return Err(format!("Исходная директория не существует: {}", src));
+    }
+    
+    // Создаём целевую директорию
+    fs::create_dir_all(dst_path)
+        .map_err(|e| format!("Ошибка создания директории {}: {}", dst, e))?;
+    
+    // Копируем рекурсивно
+    copy_dir_recursive(src_path, dst_path)?;
+    
+    Ok(())
+}
+
+fn copy_dir_recursive(src: &std::path::Path, dst: &std::path::Path) -> Result<(), String> {
+    use std::fs;
+    
+    for entry in fs::read_dir(src).map_err(|e| format!("Ошибка чтения {:?}: {}", src, e))? {
+        let entry = entry.map_err(|e| format!("Ошибка: {}", e))?;
+        let src_path = entry.path();
+        let dst_path = dst.join(entry.file_name());
+        
+        if src_path.is_dir() {
+            fs::create_dir_all(&dst_path)
+                .map_err(|e| format!("Ошибка создания {:?}: {}", dst_path, e))?;
+            copy_dir_recursive(&src_path, &dst_path)?;
+        } else {
+            fs::copy(&src_path, &dst_path)
+                .map_err(|e| format!("Ошибка копирования {:?}: {}", src_path, e))?;
+        }
+    }
+    
+    Ok(())
+}
+
+/// Записывает текст в файл
+#[tauri::command]
+async fn write_file(path: String, contents: String) -> Result<(), String> {
+    use std::fs;
+    use std::path::Path;
+    
+    let file_path = Path::new(&path);
+    
+    // Создаём родительские директории если нужно
+    if let Some(parent) = file_path.parent() {
+        fs::create_dir_all(parent)
+            .map_err(|e| format!("Ошибка создания директории: {}", e))?;
+    }
+    
+    fs::write(file_path, contents)
+        .map_err(|e| format!("Ошибка записи файла: {}", e))?;
+    
+    Ok(())
 }

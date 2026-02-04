@@ -3,11 +3,13 @@ import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { useState, useEffect } from 'react';
 import Dashboard from './pages/Dashboard';
 import LicenseModal from './components/LicenseModal';
+import { SystemCheck } from './components/SystemCheck';
 import { checkLicense, LicenseInfo } from './lib/license';
 
 const App = () => {
   const [license, setLicense] = useState<LicenseInfo | null>(null);
   const [isCheckingLicense, setIsCheckingLicense] = useState(true);
+  const [systemReady, setSystemReady] = useState(false);
 
   useEffect(() => {
     const verifyLicense = async () => {
@@ -22,6 +24,10 @@ const App = () => {
   const handleLicenseActivated = async () => {
     const licenseInfo = await checkLicense();
     setLicense(licenseInfo);
+  };
+
+  const handleSystemReady = () => {
+    setSystemReady(true);
   };
 
   if (isCheckingLicense) {
@@ -40,6 +46,16 @@ const App = () => {
       <>
         <Toaster />
         <LicenseModal open={true} onLicenseActivated={handleLicenseActivated} />
+      </>
+    );
+  }
+
+  // Проверка системных компонентов после активации лицензии
+  if (!systemReady) {
+    return (
+      <>
+        <Toaster />
+        <SystemCheck onReady={handleSystemReady} />
       </>
     );
   }
