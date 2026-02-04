@@ -1,5 +1,7 @@
 // src/types/index.ts — УЛУЧШЕННАЯ ВЕРСИЯ С РАСШИРЕННЫМ АНТИДЕТЕКТОМ
 export interface Proxy {
+  id?: string;
+  name?: string;
   enabled: boolean;
   type: 'http' | 'https' | 'socks5' | 'socks4';
   host: string;
@@ -13,6 +15,15 @@ export interface Proxy {
   // Для локального туннеля
   tunnelPort?: number;
   tunnelActive?: boolean;
+  // Метаданные для интеграций (SX.ORG и др.)
+  metadata?: {
+    sxorg_id?: number;
+    refresh_link?: string;
+    country?: string;
+    state?: string;
+    city?: string;
+    [key: string]: any;
+  };
 }
 
 // Расширенная WebGL конфигурация

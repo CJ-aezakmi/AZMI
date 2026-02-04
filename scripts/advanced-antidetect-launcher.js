@@ -301,6 +301,8 @@ class ProxyTunnel {
 
   async create(upstreamProxy) {
     try {
+      console.log('[PROXY TUNNEL] Создание туннеля для:', upstreamProxy.server);
+      
       // Используем proxy-chain для создания локального туннеля
       const { default: ProxyChain } = await import('proxy-chain');
       
@@ -308,13 +310,18 @@ class ProxyTunnel {
       
       // Если есть credentials, добавляем их в URL
       if (upstreamProxy.username && upstreamProxy.password) {
+        console.log('[PROXY TUNNEL] Добавление авторизации');
         const url = new URL(proxyUrl);
         url.username = upstreamProxy.username;
         url.password = upstreamProxy.password;
         proxyUrl = url.toString();
+        console.log('[PROXY TUNNEL] URL с авторизацией создан');
+      } else {
+        console.log('[PROXY TUNNEL] Авторизация не требуется');
       }
 
       // Создаем анонимный туннель
+      console.log('[PROXY TUNNEL] Вызов anonymizeProxy...');
       const anonymousProxy = await ProxyChain.anonymizeProxy(proxyUrl);
       
       console.log(`[PROXY] Туннель создан: ${anonymousProxy} -> ${upstreamProxy.server}`);
@@ -327,6 +334,7 @@ class ProxyTunnel {
       };
     } catch (error) {
       console.error('[PROXY] Ошибка создания туннеля:', error);
+      console.error('[PROXY] Stack:', error.stack);
       // Fallback: возвращаем прокси как есть
       return {
         server: upstreamProxy.server,
@@ -376,6 +384,7 @@ class AdvancedAntidetectLauncher {
     } = config;
 
     console.log(`[LAUNCH] Запуск ${browserType} с антидетектом`);
+    console.log('[LAUNCH] Получен proxy:', JSON.stringify(proxy));
 
     // Генерируем фингерпринт
     const fingerprint = this.fingerprintGenerator.generate(os, {
@@ -393,8 +402,15 @@ class AdvancedAntidetectLauncher {
     // Настраиваем прокси
     let proxyConfig = null;
     if (proxy && proxy.server) {
+      console.log('[PROXY] Настройка прокси, входные данные:', {
+        server: proxy.server,
+        hasUsername: !!proxy.username,
+        hasPassword: !!proxy.password,
+      });
       proxyConfig = await this.proxyTunnel.create(proxy);
       console.log('[PROXY] Настроен:', proxyConfig.server);
+    } else {
+      console.log('[PROXY] Прокси не используется');
     }
 
     // Базовые аргументы браузера

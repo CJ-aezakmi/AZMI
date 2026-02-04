@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Plus, Search, Play, Edit, Copy, Trash2, Globe, Folder, Puzzle, BarChart3, Settings, Download, Upload } from 'lucide-react';
+import { Plus, Search, Play, Edit, Copy, Trash2, Globe, Folder, Puzzle, BarChart3, Settings, Download, Upload, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -7,12 +7,14 @@ import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import ProfileModal from '@/components/ProfileModal';
 import ProxyModal from '@/components/ProxyModal';
+import SXOrgIntegration from '@/components/SXOrgIntegration';
 import UpdateDialog from '@/components/UpdateDialog';
 import { toast } from 'sonner';
 import { Profile, Proxy } from '@/types';
 import { launchProfile } from '@/lib/launchProfile';
 import { safeConfirm, safePrompt } from '@/lib/safeDialog';
 import { checkForUpdates, downloadUpdate, installUpdate, UpdateInfo, shouldAutoCheck, setLastUpdateCheck, isAutoUpdateEnabled, getCurrentVersion } from '@/lib/updater';
+import { getSXOrgApiKey, SXOrgClient } from '@/lib/sxorg-api';
 
 const Dashboard = () => {
   const [activeView, setActiveView] = useState('profiles');
@@ -22,11 +24,13 @@ const Dashboard = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
   const [isProxyModalOpen, setIsProxyModalOpen] = useState(false);
+  const [isSXOrgModalOpen, setIsSXOrgModalOpen] = useState(false);
   const [editingProfile, setEditingProfile] = useState<Profile | null>(null);
   const [folders, setFolders] = useState<string[]>(['Работа', 'Личное', 'Тестовые']);
   const [selectedFolder, setSelectedFolder] = useState<string | null>(null);
   const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null);
   const [showUpdateDialog, setShowUpdateDialog] = useState(false);
+  const [refreshingProxyIndex, setRefreshingProxyIndex] = useState<number | null>(null);
 
 
   // Проверка Node.js при первом запуске
@@ -328,6 +332,37 @@ const Dashboard = () => {
         toast.error(`Прокси ${proxy.host}:${proxy.port} не отвечает`);
       }
     }, 1500);
+  };
+
+  // Обновление IP прокси (для SX.ORG)
+  const handleRefreshProxyIP = async (index: number) => {
+    const proxy = proxies[index];
+    
+    // Проверяем есть ли refresh_link в metadata
+    if (!proxy.metadata?.refresh_link) {
+      toast.error('Этот прокси не поддерживает обновление IP');
+      return;
+    }
+
+    setRefreshingProxyIndex(index);
+    toast.info('Обновление IP адреса...');
+
+    try {
+      const apiKey = getSXOrgApiKey();
+      if (!apiKey) {
+        toast.error('API ключ SX.ORG не найден');
+        return;
+      }
+
+      const client = new SXOrgClient(apiKey);
+      await client.refreshProxyIP(proxy.metadata.refresh_link);
+      toast.success('IP адрес успешно обновлен!');
+    } catch (error: any) {
+      console.error('Refresh proxy error:', error);
+      toast.error(error.message || 'Ошибка обновления IP');
+    } finally {
+      setRefreshingProxyIndex(null);
+    }
   };
 
   // Добавление папки
@@ -747,10 +782,19 @@ const Dashboard = () => {
           <div className="p-8">
             <div className="mb-6 flex justify-between items-center">
               <h2 className="text-2xl font-bold">Управление прокси</h2>
-              <Button onClick={() => setIsProxyModalOpen(true)}>
-                <Plus className="w-4 h-4 mr-2" />
-                Добавить прокси
-              </Button>
+              <div className="flex gap-2">
+                <Button 
+                  onClick={() => setIsSXOrgModalOpen(true)}
+                  variant="outline"
+                  className="bg-blue-100 border-2 border-blue-300 hover:border-blue-400 hover:bg-blue-200 px-4 py-2.5 h-auto"
+                >
+                  <img src="/src/assets/sxorg-logo.svg" alt="SX.ORG" className="h-5 w-auto" style={{ minWidth: '60px' }} />
+                </Button>
+                <Button onClick={() => setIsProxyModalOpen(true)}>
+                  <Plus className="w-4 h-4 mr-2" />
+                  Добавить прокси
+                </Button>
+              </div>
             </div>
 
             {proxies.length === 0 ? (
@@ -770,8 +814,34 @@ const Dashboard = () => {
                   <Card key={index} className="bg-white/95 backdrop-blur-sm">
                     <CardContent className="flex items-center justify-between p-4">
                       <div className="flex-1">
-                        <div className="font-semibold">
-                          {proxy.type.toUpperCase()}://{proxy.host}:{proxy.port}
+                        <div className="font-semibold flex items-center gap-2">
+                          {proxy.metadata?.countryCode && (
+                            <span className={`fi fi-${proxy.metadata.countryCode}`} style={{ fontSize: '1.2em' }}></span>
+                          )}
+                          {proxy.metadata?.proxy_type_id === 1 && (
+                            <div className="w-6 h-6 bg-gray-100 dark:bg-gray-700 rounded flex items-center justify-center flex-shrink-0">
+                              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                <path d="M5.83333 1.83337H11.1667V0.833374H5.83333V1.83337ZM12 2.66671V13.3334H13V2.66671H12ZM11.1667 14.1667H5.83333V15.1667H11.1667V14.1667ZM5 13.3334V2.66671H4V13.3334H5ZM5.83333 14.1667C5.3731 14.1667 5 13.7936 5 13.3334H4C4 14.3459 4.82081 15.1667 5.83333 15.1667V14.1667ZM12 13.3334C12 13.7936 11.6269 14.1667 11.1667 14.1667V15.1667C12.1792 15.1667 13 14.3459 13 13.3334H12ZM11.1667 1.83337C11.6269 1.83337 12 2.20647 12 2.66671H13C13 1.65419 12.1792 0.833374 11.1667 0.833374V1.83337ZM5.83333 0.833374C4.82081 0.833374 4 1.65418 4 2.66671H5C5 2.20647 5.3731 1.83337 5.83333 1.83337V0.833374Z" fill="#87898F"/>
+                                <path d="M7.16675 12.8334H9.83341" stroke="#87898F" strokeMiterlimit="1.02018" strokeLinecap="round" strokeLinejoin="round"/>
+                                <path d="M8.5 3H8.50667" stroke="#87898F" strokeMiterlimit="1.02018" strokeLinecap="round" strokeLinejoin="round"/>
+                              </svg>
+                            </div>
+                          )}
+                          {proxy.metadata?.proxy_type_id === 2 && (
+                            <div className="w-6 h-6 bg-gray-100 dark:bg-gray-700 rounded flex items-center justify-center flex-shrink-0">
+                              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                <path d="M14 12.6667V7.31878C14 6.90732 13.81 6.51892 13.4853 6.26631L8.81859 2.63668C8.33711 2.26219 7.66289 2.26219 7.18141 2.63668L2.51475 6.26631C2.18996 6.51892 2 6.90732 2 7.31878V12.6667C2 13.403 2.59695 14 3.33333 14H5.16667C5.90305 14 6.5 13.403 6.5 12.6667V10.8333C6.5 10.097 7.09695 9.5 7.83333 9.5H8.16667C8.90305 9.5 9.5 10.097 9.5 10.8333V12.6667C9.5 13.403 10.097 14 10.8333 14H12.6667C13.403 14 14 13.403 14 12.6667Z" stroke="#87898F" strokeLinejoin="round"/>
+                              </svg>
+                            </div>
+                          )}
+                          {proxy.metadata?.proxy_type_id === 4 && (
+                            <div className="w-6 h-6 bg-gray-100 dark:bg-gray-700 rounded flex items-center justify-center flex-shrink-0">
+                              <svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                <path d="M12.8125 4.375V5.5M10 4.375V5.5M7.1875 4.375V5.5M12.8125 8.125V9.25M10 8.125V9.25M7.1875 8.125V9.25M12.8125 11.875V13M10 11.875V13M7.1875 11.875V13M5.5 16.75H14.5C15.1904 16.75 15.75 16.1904 15.75 15.5V6.3125C15.75 5.62215 15.1904 5.0625 14.5 5.0625H5.5C4.80964 5.0625 4.25 5.62215 4.25 6.3125V15.5C4.25 16.1904 4.80964 16.75 5.5 16.75Z" stroke="#87898F" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                              </svg>
+                            </div>
+                          )}
+                          {proxy.name || `${proxy.type.toUpperCase()}://${proxy.host}:${proxy.port}`}
                         </div>
                         <div className="text-sm text-gray-600">
                           {proxy.username ? `${proxy.username}:***` : 'Без авторизации'}
@@ -781,6 +851,21 @@ const Dashboard = () => {
                         <Badge variant={proxy.status === 'working' ? 'default' : proxy.status === 'failed' ? 'destructive' : 'secondary'}>
                           {proxy.status === 'working' ? '✅ Работает' : proxy.status === 'failed' ? '❌ Не работает' : '❓ Не проверен'}
                         </Badge>
+                        {proxy.metadata?.refresh_link && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => handleRefreshProxyIP(index)}
+                            disabled={refreshingProxyIndex === index}
+                            title="Обновить IP адрес"
+                          >
+                            {refreshingProxyIndex === index ? (
+                              <RefreshCw className="w-4 h-4 animate-spin" />
+                            ) : (
+                              <RefreshCw className="w-4 h-4" />
+                            )}
+                          </Button>
+                        )}
                         <Button
                           size="sm"
                           variant="outline"
@@ -959,12 +1044,19 @@ const Dashboard = () => {
         profile={editingProfile}
         proxies={proxies}
         folders={folders}
+        onOpenSXOrg={() => setIsSXOrgModalOpen(true)}
       />
 
       <ProxyModal
         open={isProxyModalOpen}
         onOpenChange={setIsProxyModalOpen}
         onAdd={handleAddProxies}
+      />
+
+      <SXOrgIntegration
+        open={isSXOrgModalOpen}
+        onClose={() => setIsSXOrgModalOpen(false)}
+        onProxiesImported={handleAddProxies}
       />
 
       <UpdateDialog

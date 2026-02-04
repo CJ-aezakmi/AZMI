@@ -77,6 +77,13 @@ export async function launchProfile(profile: Profile) {
         hasAuth: !!(username && password),
         type: proxyType,
       });
+      console.log('[LAUNCH] 🔐 Детали прокси:', {
+        host: proxyHost,
+        port: proxyPort,
+        username: username ? `${username.substring(0, 10)}...` : 'нет',
+        password: password ? '***' : 'нет',
+        fullServer: proxyData.server,
+      });
     } else {
       console.log('[LAUNCH] 🌐 Прокси: не используется');
     }
@@ -140,6 +147,7 @@ export async function launchProfile(profile: Profile) {
     const payload = JSON.stringify(launchConfig);
     
     console.log('[LAUNCH] 📦 Payload размер:', payload.length, 'байт');
+    console.log('[LAUNCH] 📦 Proxy в payload:', JSON.stringify(launchConfig.proxy));
 
     // Вызываем Rust команду для запуска браузера через новый лаунчер
     await invoke('open_profile', { 

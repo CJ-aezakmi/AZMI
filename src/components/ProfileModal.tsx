@@ -8,7 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Profile, Proxy } from '@/types';
-import { Zap } from 'lucide-react';
+import { Zap, Globe } from 'lucide-react';
 
 interface ProfileModalProps {
   open: boolean;
@@ -17,9 +17,10 @@ interface ProfileModalProps {
   profile: Profile | null;
   proxies: Proxy[];
   folders?: string[]; // Список доступных папок
+  onOpenSXOrg?: () => void; // Callback для открытия SX.ORG интеграции
 }
 
-const ProfileModal = ({ open, onOpenChange, onSave, profile, proxies, folders = [] }: ProfileModalProps) => {
+const ProfileModal = ({ open, onOpenChange, onSave, profile, proxies, folders = [], onOpenSXOrg }: ProfileModalProps) => {
   const [formData, setFormData] = useState({
     name: '',
     notes: '',
@@ -405,6 +406,17 @@ const ProfileModal = ({ open, onOpenChange, onSave, profile, proxies, folders = 
                   >
                     Ручной ввод
                   </Button>
+                  {onOpenSXOrg && (
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      onClick={onOpenSXOrg}
+                      className="bg-blue-100 border-2 border-blue-300 hover:border-blue-400 hover:bg-blue-200 px-3 py-2"
+                    >
+                      <img src="/src/assets/sxorg-logo.svg" alt="SX.ORG" className="h-4 w-auto" style={{ minWidth: '48px' }} />
+                    </Button>
+                  )}
                 </div>
 
                 {/* Выбор из списка */}
