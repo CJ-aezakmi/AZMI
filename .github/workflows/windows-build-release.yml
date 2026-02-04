@@ -28,52 +28,6 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Download and prepare Node.js portable
-        run: |
-          Write-Host "Downloading Node.js portable..."
-          $nodeUrl = "https://nodejs.org/dist/v18.20.5/node-v18.20.5-win-x64.zip"
-          $nodeZip = "node-portable.zip"
-          Invoke-WebRequest -Uri $nodeUrl -OutFile $nodeZip
-          
-          Write-Host "Extracting Node.js..."
-          Expand-Archive -Path $nodeZip -DestinationPath "node-temp" -Force
-          
-          # Переименовываем папку в node в корень репозитория
-          $extractedFolder = Get-ChildItem -Path "node-temp" -Directory | Select-Object -First 1
-          Move-Item -Path $extractedFolder.FullName -Destination "../../node" -Force
-          Remove-Item -Path "node-temp" -Recurse -Force
-          Remove-Item -Path $nodeZip -Force
-          
-          Write-Host "Node.js portable готов в ../../node"
-        shell: pwsh
-
-      - name: Install Playwright and download browsers
-        run: |
-          Write-Host "Installing Playwright globally..."
-          npm install -g playwright
-          
-          Write-Host "Downloading Chromium browser..."
-          $env:PLAYWRIGHT_BROWSERS_PATH = "../../playwright-cache"
-          npx playwright install chromium
-          
-          Write-Host "Playwright browsers готовы в ../../playwright-cache"
-        shell: pwsh
-
-      - name: Install pkg (for bundling launcher)
-        run: npm install -g pkg
-
-      - name: Download Node.js installer
-        run: |
-          mkdir -p src-tauri/binaries
-          Invoke-WebRequest -Uri "https://nodejs.org/dist/v18.20.5/node-v18.20.5-x64.msi" -OutFile "src-tauri/binaries/node-installer.msi"
-          Write-Host "Node.js installer downloaded"
-        shell: pwsh
-
-      - name: Build launcher exe with pkg
-        run: |
-          pkg --targets node18-win-x64 --output src-tauri/binaries/launch_playwright.exe scripts/launch_playwright.cjs
-        shell: bash
-
       - name: Build web assets
         run: pnpm build
 
@@ -89,79 +43,18 @@ jobs:
           CARGO_HOME: ${{ runner.temp }}/cargo
         run: pnpm tauri build --target x86_64-pc-windows-msvc
 
-      - name: Build custom NSIS installer with all resources
-        run: |
-          Write-Host "Installing NSIS..."
-          choco install nsis -y
-          
-          Write-Host "Preparing resources for NSIS installer..."
-          
-          # Все ресурсы уже скачаны в корень репозитория (../../)
-          # Но мы работаем из разработка/aezakmi/
-          # Нужно скопировать в текущую папку
-          
-          Write-Host "Current directory: $PWD"
-          Write-Host "Checking for Node.js..."
-          if (Test-Path "..\..\node") {
-            Copy-Item -Path "..\..\node" -Destination "node" -Recurse -Force
-            Write-Host "✓ Node.js copied"
-          } else {
-            Write-Error "Node.js not found at ..\..\node"
-            exit 1
-          }
-          
-          Write-Host "Checking for Playwright cache..."
-          if (Test-Path "..\..\playwright-cache") {
-            Copy-Item -Path "..\..\playwright-cache" -Destination "playwright-cache" -Recurse -Force
-            Write-Host "✓ Playwright cache copied"
-          } else {
-            Write-Error "Playwright cache not found at ..\..\playwright-cache"
-            exit 1
-          }
-          
-          Write-Host "Checking for scripts..."
-          if (Test-Path "..\..\scripts") {
-            Copy-Item -Path "..\..\scripts" -Destination "scripts" -Recurse -Force
-            Write-Host "✓ Scripts copied"
-          } else {
-            # Если нет scripts в корне, создаём пустую папку (для NSIS)
-            New-Item -ItemType Directory -Force -Path "scripts" | Out-Null
-            Write-Host "⚠ Scripts folder not found, created empty folder"
-          }
-          
-          Write-Host "Building NSIS installer with Node.js and Playwright..."
-          & 'C:\Program Files (x86)\NSIS\makensis.exe' installer.nsi
-          
-          if ($LASTEXITCODE -ne 0) {
-            Write-Error "NSIS compilation failed"
-            exit 1
-          }
-          
-          Write-Host "NSIS installer created successfully"
-          
-          # Проверяем что файл создался
-          if (Test-Path "AEZAKMI-Setup.exe") {
-            Write-Host "✓ AEZAKMI-Setup.exe created successfully"
-            $size = (Get-Item "AEZAKMI-Setup.exe").Length / 1MB
-            Write-Host "  Size: $([math]::Round($size, 2)) MB"
-          } else {
-            Write-Error "Failed to create AEZAKMI-Setup.exe"
-            exit 1
-          }
-        shell: pwsh
-
-      - name: Upload build artifacts
+      - name: Upload Windows installer
         uses: actions/upload-artifact@v4
         with:
           name: tauri-windows-bundle
           path: |
-            AEZAKMI-Setup.exe
+            src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/*.exe
 
       - name: Create GitHub Release (on tag)
         if: startsWith(github.ref, 'refs/tags/')
         uses: ncipollo/release-action@v1
         with:
-          artifacts: "AEZAKMI-Setup.exe"
+          artifacts: "src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/*.exe"
           token: ${{ secrets.GITHUB_TOKEN }}
           draft: false
           prerelease: false
