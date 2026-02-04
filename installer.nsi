@@ -23,8 +23,8 @@ RequestExecutionLevel admin
 Section "MainSection" SEC01
   SetOutPath "$INSTDIR"
   
-  ; Копируем основное приложение
-  File /r "src-tauri\target\x86_64-pc-windows-msvc\release\AEZAKMI.exe"
+  ; Копируем основное приложение (Tauri создаёт app.exe, переименовываем в AEZAKMI.exe)
+  File "/oname=AEZAKMI.exe" "src-tauri\target\x86_64-pc-windows-msvc\release\app.exe"
   
   ; Копируем Node.js portable
   SetOutPath "$INSTDIR\node"
