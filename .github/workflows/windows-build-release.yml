@@ -46,9 +46,6 @@ jobs:
           
           Write-Host "Node.js portable готов в ../../node"
         shell: pwsh
-          
-          Write-Host "Node.js portable готов"
-        shell: pwsh
 
       - name: Install Playwright and download browsers
         run: |
