@@ -7,7 +7,6 @@ import 'flag-icons/css/flag-icons.min.css'
 // Временная глобальная функция для выхода из SX.ORG (для записи видео)
 (window as any).sxorgLogout = () => {
   localStorage.removeItem('sxorg_api_key');
-  console.log('✅ Вышли из аккаунта SX.ORG. Обновите страницу (F5)');
 };
 
 ReactDOM.createRoot(document.getElementById('root')!).render(

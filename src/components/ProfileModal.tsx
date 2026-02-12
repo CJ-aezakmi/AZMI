@@ -7,8 +7,9 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Profile, Proxy } from '@/types';
-import { Zap, Globe } from 'lucide-react';
+import { Profile, Proxy, BrowserEngine, MobileEmulation, MOBILE_DEVICES, CookieEntry } from '@/types';
+import { Zap, Globe, Smartphone, Monitor, Upload, Trash2 } from 'lucide-react';
+import { toast } from 'sonner';
 
 interface ProfileModalProps {
   open: boolean;
@@ -25,6 +26,9 @@ const ProfileModal = ({ open, onOpenChange, onSave, profile, proxies, folders = 
     name: '',
     notes: '',
     folder: '', // Папка профиля
+    browserEngine: (localStorage.getItem('aezakmi_default_engine') as BrowserEngine) || 'chromium' as BrowserEngine,
+    mobileEnabled: false,
+    mobileDevice: '' as string,
     userAgent: 'auto',
     screenWidth: 1920,
     screenHeight: 1080,
@@ -47,13 +51,18 @@ const ProfileModal = ({ open, onOpenChange, onSave, profile, proxies, folders = 
 
   const [quickProxyInput, setQuickProxyInput] = useState('');
   const [proxyInputMode, setProxyInputMode] = useState<'select' | 'quick' | 'manual'>('select');
+  const [cookies, setCookies] = useState<CookieEntry[]>([]);
 
   useEffect(() => {
     if (profile) {
+      setCookies(profile.cookies || []);
       setFormData({
         name: profile.name,
         notes: profile.notes || '',
         folder: profile.folder || '',
+        browserEngine: profile.browserEngine || (localStorage.getItem('aezakmi_default_engine') as BrowserEngine) || 'chromium',
+        mobileEnabled: profile.mobileEmulation?.enabled || false,
+        mobileDevice: profile.mobileEmulation?.deviceName || '',
         userAgent: profile.userAgent,
         screenWidth: profile.screenWidth,
         screenHeight: profile.screenHeight,
@@ -74,10 +83,14 @@ const ProfileModal = ({ open, onOpenChange, onSave, profile, proxies, folders = 
         longitude: profile.antidetect.geolocation?.longitude || 0,
       });
     } else {
+      setCookies([]);
       setFormData({
         name: '',
         notes: '',
         folder: '',
+        browserEngine: (localStorage.getItem('aezakmi_default_engine') as BrowserEngine) || 'chromium',
+        mobileEnabled: false,
+        mobileDevice: '',
         userAgent: 'auto',
         screenWidth: 1920,
         screenHeight: 1080,
@@ -160,12 +173,12 @@ const ProfileModal = ({ open, onOpenChange, onSave, profile, proxies, folders = 
         };
       }
     } catch (error) {
-      console.warn('Failed to parse proxy string:', proxyString, error);
+      // Failed to parse proxy string
     }
     return null;
   };
 
-  const handleQuickProxyApply = () => {
+  const handleQuickProxyApply = async () => {
     if (!quickProxyInput.trim()) {
       alert('Введите прокси');
       return;
@@ -177,14 +190,17 @@ const ProfileModal = ({ open, onOpenChange, onSave, profile, proxies, folders = 
       return;
     }
 
-    setFormData({ ...formData, ...parsed });
+    // Автоопределение будет выполнено launcher'ом при запуске профиля
+    const updatedData = { ...formData, ...parsed };
+
+    setFormData(updatedData);
     setQuickProxyInput('');
-    alert('Прокси применен!');
+    alert('Прокси применен! Timezone и язык будут определены автоматически при запуске.');
   };
 
   const handleSelectProxy = (index: number) => {
     const proxy = proxies[index];
-    setFormData({
+    const updatedData = {
       ...formData,
       proxyEnabled: true,
       proxyType: proxy.type,
@@ -192,7 +208,10 @@ const ProfileModal = ({ open, onOpenChange, onSave, profile, proxies, folders = 
       proxyPort: proxy.port,
       proxyUsername: proxy.username || '',
       proxyPassword: proxy.password || '',
-    });
+    };
+
+    // Автоопределение будет выполнено launcher'ом при запуске профиля
+    setFormData(updatedData);
   };
 
   const handleSubmit = () => {
@@ -205,11 +224,20 @@ const ProfileModal = ({ open, onOpenChange, onSave, profile, proxies, folders = 
       name: formData.name,
       notes: formData.notes,
       folder: formData.folder || undefined,
+      browserEngine: formData.browserEngine,
+      cookies: cookies.length > 0 ? cookies : undefined,
       userAgent: formData.userAgent,
       screenWidth: formData.screenWidth,
       screenHeight: formData.screenHeight,
       language: formData.language,
       timezone: formData.timezone,
+      mobileEmulation: formData.mobileEnabled ? {
+        enabled: true,
+        deviceName: formData.mobileDevice || undefined,
+        ...(formData.mobileDevice && MOBILE_DEVICES[formData.mobileDevice]
+          ? MOBILE_DEVICES[formData.mobileDevice]
+          : { isMobile: true, hasTouch: true }),
+      } : undefined,
       proxy: formData.proxyEnabled ? {
         enabled: true,
         type: formData.proxyType as 'http' | 'https' | 'socks5' | 'socks4',
@@ -240,10 +268,12 @@ const ProfileModal = ({ open, onOpenChange, onSave, profile, proxies, folders = 
         </DialogHeader>
 
         <Tabs defaultValue="basic" className="w-full">
-          <TabsList className="grid w-full grid-cols-4">
+          <TabsList className="grid w-full grid-cols-6">
             <TabsTrigger value="basic">Основные</TabsTrigger>
-            <TabsTrigger value="browser">Браузер</TabsTrigger>
             <TabsTrigger value="proxy">Прокси</TabsTrigger>
+            <TabsTrigger value="browser">Браузер</TabsTrigger>
+            <TabsTrigger value="device">Устройство</TabsTrigger>
+            <TabsTrigger value="cookies">🍪 Cookies</TabsTrigger>
             <TabsTrigger value="antidetect">Антидетект</TabsTrigger>
           </TabsList>
 
@@ -290,6 +320,18 @@ const ProfileModal = ({ open, onOpenChange, onSave, profile, proxies, folders = 
 
           <TabsContent value="browser" className="space-y-4">
             <div>
+              <Label htmlFor="browserEngine">Движок браузера</Label>
+              <Select value={formData.browserEngine} onValueChange={(value) => setFormData({ ...formData, browserEngine: value as BrowserEngine })}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="chromium">Chromium (Рекомендуется)</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div>
               <Label htmlFor="userAgent">User Agent</Label>
               <Select value={formData.userAgent} onValueChange={(value) => setFormData({ ...formData, userAgent: value })}>
                 <SelectTrigger>
@@ -333,8 +375,8 @@ const ProfileModal = ({ open, onOpenChange, onSave, profile, proxies, folders = 
 
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <Label htmlFor="language">Язык</Label>
-                <Select value={formData.language} onValueChange={(value) => setFormData({ ...formData, language: value })}>
+                <Label htmlFor="language">Язык {formData.proxyEnabled && <span className="text-xs text-muted-foreground">(автоопределение)</span>}</Label>
+                <Select value={formData.language} onValueChange={(value) => setFormData({ ...formData, language: value })} disabled={formData.proxyEnabled}>
                   <SelectTrigger>
                     <SelectValue />
                   </SelectTrigger>
@@ -349,8 +391,8 @@ const ProfileModal = ({ open, onOpenChange, onSave, profile, proxies, folders = 
                 </Select>
               </div>
               <div>
-                <Label htmlFor="timezone">Часовой пояс</Label>
-                <Select value={formData.timezone} onValueChange={(value) => setFormData({ ...formData, timezone: value })}>
+                <Label htmlFor="timezone">Часовой пояс {formData.proxyEnabled && <span className="text-xs text-muted-foreground">(автоопределение)</span>}</Label>
+                <Select value={formData.timezone} onValueChange={(value) => setFormData({ ...formData, timezone: value })} disabled={formData.proxyEnabled}>
                   <SelectTrigger>
                     <SelectValue />
                   </SelectTrigger>
@@ -365,6 +407,208 @@ const ProfileModal = ({ open, onOpenChange, onSave, profile, proxies, folders = 
                 </Select>
               </div>
             </div>
+          </TabsContent>
+
+          <TabsContent value="device" className="space-y-4">
+            <div className="flex items-center space-x-2">
+              <Checkbox
+                id="mobileEnabled"
+                checked={formData.mobileEnabled}
+                onCheckedChange={(checked) => {
+                  const enabled = checked as boolean;
+                  setFormData({ ...formData, mobileEnabled: enabled, mobileDevice: enabled ? formData.mobileDevice : '' });
+                }}
+              />
+              <Label htmlFor="mobileEnabled" className="flex items-center gap-2">
+                <Smartphone className="w-4 h-4" />
+                Эмуляция мобильного устройства
+              </Label>
+            </div>
+
+            {formData.mobileEnabled ? (
+              <>
+                <div>
+                  <Label>Устройство</Label>
+                  <Select value={formData.mobileDevice} onValueChange={(value) => {
+                    const device = MOBILE_DEVICES[value];
+                    if (device) {
+                      setFormData({
+                        ...formData,
+                        mobileDevice: value,
+                        screenWidth: device.width || formData.screenWidth,
+                        screenHeight: device.height || formData.screenHeight,
+                        userAgent: device.userAgent || formData.userAgent,
+                      });
+                    } else {
+                      setFormData({ ...formData, mobileDevice: value });
+                    }
+                  }}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Выберите устройство" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {Object.keys(MOBILE_DEVICES).map((name) => (
+                        <SelectItem key={name} value={name}>{name} ({MOBILE_DEVICES[name].width}x{MOBILE_DEVICES[name].height})</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                {formData.mobileDevice && MOBILE_DEVICES[formData.mobileDevice] && (
+                  <div className="bg-gray-50 rounded-lg p-3 text-sm space-y-1">
+                    <p><strong>Разрешение:</strong> {MOBILE_DEVICES[formData.mobileDevice].width}x{MOBILE_DEVICES[formData.mobileDevice].height}</p>
+                    <p><strong>DPR:</strong> {MOBILE_DEVICES[formData.mobileDevice].deviceScaleFactor}</p>
+                    <p><strong>Touch:</strong> Да</p>
+                  </div>
+                )}
+              </>
+            ) : (
+              <div className="flex items-center gap-2 text-gray-500 py-4">
+                <Monitor className="w-5 h-5" />
+                <span>Режим десктопа — стандартное разрешение</span>
+              </div>
+            )}
+          </TabsContent>
+
+          <TabsContent value="cookies" className="space-y-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <Label>Импорт Cookies</Label>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Поддерживается JSON (EditThisCookie) и Netscape TXT формат
+                </p>
+              </div>
+              <div className="flex gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    const input = document.createElement('input');
+                    input.type = 'file';
+                    input.accept = '.json,.txt';
+                    input.onchange = (e) => {
+                      const file = (e.target as HTMLInputElement).files?.[0];
+                      if (file) {
+                        const reader = new FileReader();
+                        reader.onload = (event) => {
+                          try {
+                            const text = event.target?.result as string;
+                            let parsed: CookieEntry[] = [];
+                            try {
+                              const json = JSON.parse(text);
+                              if (Array.isArray(json)) {
+                                parsed = json.map((c: any) => ({
+                                  name: c.name,
+                                  value: c.value,
+                                  domain: c.domain,
+                                  path: c.path || '/',
+                                  expires: c.expirationDate || c.expires || undefined,
+                                  httpOnly: c.httpOnly || false,
+                                  secure: c.secure || false,
+                                  sameSite: c.sameSite === 'no_restriction' ? 'None' : c.sameSite === 'lax' ? 'Lax' : c.sameSite === 'strict' ? 'Strict' : 'Lax',
+                                }));
+                              }
+                            } catch {
+                              // Netscape TXT format
+                              parsed = text.split('\n')
+                                .filter(line => line.trim() && !line.startsWith('#'))
+                                .map(line => {
+                                  const parts = line.split('\t');
+                                  if (parts.length >= 7) {
+                                    return {
+                                      name: parts[5],
+                                      value: parts[6],
+                                      domain: parts[0],
+                                      path: parts[2],
+                                      expires: parts[4] !== '0' ? parseInt(parts[4]) : undefined,
+                                      httpOnly: parts[1] === 'TRUE',
+                                      secure: parts[3] === 'TRUE',
+                                      sameSite: 'Lax' as const,
+                                    };
+                                  }
+                                  return null;
+                                })
+                                .filter(Boolean) as CookieEntry[];
+                            }
+                            if (parsed.length > 0) {
+                              setCookies(prev => [...prev, ...parsed]);
+                              toast.success(`Загружено ${parsed.length} cookies`);
+                            } else {
+                              toast.error('Не удалось распознать cookies');
+                            }
+                          } catch {
+                            toast.error('Ошибка чтения файла');
+                          }
+                        };
+                        reader.readAsText(file);
+                      }
+                    };
+                    input.click();
+                  }}
+                >
+                  <Upload className="w-4 h-4 mr-1" />
+                  Загрузить файл
+                </Button>
+                {cookies.length > 0 && (
+                  <Button
+                    type="button"
+                    variant="destructive"
+                    size="sm"
+                    onClick={() => {
+                      setCookies([]);
+                      toast.success('Все cookies удалены');
+                    }}
+                  >
+                    <Trash2 className="w-4 h-4 mr-1" />
+                    Очистить
+                  </Button>
+                )}
+              </div>
+            </div>
+
+            {cookies.length > 0 ? (
+              <div className="border rounded-lg overflow-hidden">
+                <div className="bg-gray-50 px-3 py-2 text-sm font-medium border-b">
+                  Загружено cookies: {cookies.length}
+                </div>
+                <div className="max-h-[300px] overflow-y-auto">
+                  <table className="w-full text-xs">
+                    <thead className="bg-gray-50 sticky top-0">
+                      <tr>
+                        <th className="px-3 py-1.5 text-left">Домен</th>
+                        <th className="px-3 py-1.5 text-left">Имя</th>
+                        <th className="px-3 py-1.5 text-left">Значение</th>
+                        <th className="px-3 py-1.5 text-center w-8"></th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {cookies.map((cookie, i) => (
+                        <tr key={i} className="border-t hover:bg-gray-50">
+                          <td className="px-3 py-1 text-gray-600 max-w-[120px] truncate">{cookie.domain}</td>
+                          <td className="px-3 py-1 font-mono max-w-[120px] truncate">{cookie.name}</td>
+                          <td className="px-3 py-1 text-gray-500 max-w-[150px] truncate">{cookie.value}</td>
+                          <td className="px-3 py-1 text-center">
+                            <button
+                              type="button"
+                              className="text-red-400 hover:text-red-600"
+                              onClick={() => setCookies(prev => prev.filter((_, idx) => idx !== i))}
+                            >
+                              ×
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            ) : (
+              <div className="text-center text-gray-400 py-8 border rounded-lg border-dashed">
+                <p className="text-lg mb-1">🍪</p>
+                <p className="text-sm">Нет загруженных cookies</p>
+                <p className="text-xs mt-1">Нажмите "Загрузить файл" для импорта</p>
+              </div>
+            )}
           </TabsContent>
 
           <TabsContent value="proxy" className="space-y-4">

@@ -102,7 +102,6 @@ const SXOrgImportProxy = ({ client, onProxiesImported }: SXOrgImportProxyProps) 
         name: proxyName,
         countryCode: countryCode,
         metadata: {
-          ...proxy.metadata,
           sxorg_id: proxy.id,
           refresh_link: proxy.refresh_link,
           country: country,

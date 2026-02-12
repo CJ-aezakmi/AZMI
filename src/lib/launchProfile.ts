@@ -1,6 +1,7 @@
 // src/lib/launchProfile.ts — УЛУЧШЕННАЯ ВЕРСИЯ С РАСШИРЕННЫМ АНТИДЕТЕКТОМ
 import { invoke } from '@tauri-apps/api/core';
 import type { Profile, LaunchConfig } from '@/types';
+import { getTimezoneAndLanguageFromProxy } from './geoip';
 
 /**
  * Генерация User-Agent на основе ОС и типа браузера
@@ -16,21 +17,12 @@ function generateUserAgent(profile: Profile): string {
   const userAgents = {
     windows: {
       chromium: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-      firefox: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:121.0) Gecko/20100101 Firefox/121.0',
-      camoufox: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:121.0) Gecko/20100101 Firefox/121.0',
-      webkit: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
     },
     macos: {
       chromium: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-      firefox: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:121.0) Gecko/20100101 Firefox/121.0',
-      camoufox: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:121.0) Gecko/20100101 Firefox/121.0',
-      webkit: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.1 Safari/605.1.15',
     },
     linux: {
       chromium: 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-      firefox: 'Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:121.0) Gecko/20100101 Firefox/121.0',
-      camoufox: 'Mozilla/5.0 (X11; Linux x86_64; rv:121.0) Gecko/20100101 Firefox/121.0',
-      webkit: 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
     },
   };
 
@@ -49,12 +41,8 @@ export async function launchProfile(profile: Profile) {
     const timestamp = Date.now();
     const profileDir = `aezakmi-profile-${profile.id}-${timestamp}`;
 
-    console.log('[LAUNCH] 🚀 Запуск профиля:', profile.name);
-    console.log('[LAUNCH] 🔧 Движок браузера:', profile.browserEngine || 'chromium');
-
     // Генерируем или используем существующий User-Agent
     const userAgent = generateUserAgent(profile);
-    console.log('[LAUNCH] 👤 User-Agent:', userAgent);
 
     // Формируем данные прокси
     let proxyData = undefined;
@@ -71,21 +59,6 @@ export async function launchProfile(profile: Profile) {
         username: username || undefined,
         password: password || undefined,
       };
-
-      console.log('[LAUNCH] 🌐 Прокси:', {
-        server: proxyData.server,
-        hasAuth: !!(username && password),
-        type: proxyType,
-      });
-      console.log('[LAUNCH] 🔐 Детали прокси:', {
-        host: proxyHost,
-        port: proxyPort,
-        username: username ? `${username.substring(0, 10)}...` : 'нет',
-        password: password ? '***' : 'нет',
-        fullServer: proxyData.server,
-      });
-    } else {
-      console.log('[LAUNCH] 🌐 Прокси: не используется');
     }
 
     // Формируем экран
@@ -93,7 +66,6 @@ export async function launchProfile(profile: Profile) {
       width: profile.screenWidth || 1920,
       height: profile.screenHeight || 1080,
     };
-    console.log('[LAUNCH] 🖥️  Разрешение:', `${screen.width}x${screen.height}`);
 
     // Формируем конфигурацию антидетекта
     const antidetectConfig = {
@@ -124,12 +96,17 @@ export async function launchProfile(profile: Profile) {
       spoofBattery: profile.antidetect.spoofBattery ?? true,
     };
 
-    console.log('[LAUNCH] 🛡️  Антидетект:', {
-      canvas: antidetectConfig.canvas.noise ? '✅' : '❌',
-      webgl: antidetectConfig.webgl.noise ? '✅' : '❌',
-      audio: antidetectConfig.audio.noise ? '✅' : '❌',
-      webrtc: antidetectConfig.webrtc.block ? '🚫' : '✅',
-    });
+    // Формируем данные мобильной эмуляции
+    const mobileEmulationData = profile.mobileEmulation?.enabled ? {
+      enabled: true,
+      deviceName: profile.mobileEmulation.deviceName,
+      width: profile.mobileEmulation.width,
+      height: profile.mobileEmulation.height,
+      deviceScaleFactor: profile.mobileEmulation.deviceScaleFactor,
+      isMobile: profile.mobileEmulation.isMobile ?? true,
+      hasTouch: profile.mobileEmulation.hasTouch ?? true,
+      userAgent: profile.mobileEmulation.userAgent,
+    } : undefined;
 
     // Формируем полную конфигурацию для лаунчера
     const launchConfig: LaunchConfig = {
@@ -138,24 +115,24 @@ export async function launchProfile(profile: Profile) {
       userAgent,
       screen,
       proxy: proxyData,
-      url: 'https://whoer.net',
+      url: profile.homepage || 'https://www.google.com', // Домашняя страница или Google по умолчанию
       antidetect: antidetectConfig,
       os: profile.os || 'windows',
+      mobileEmulation: mobileEmulationData,
+      locale: profile.language || 'ru-RU', // Базовое значение, будет обновлено в launcher
+      timezoneId: profile.timezone || 'Europe/Moscow', // Базовое значение, будет обновлено в launcher
+      autoDetectLocale: !!proxyData, // Флаг для автоопределения по реальному IP
+      cookies: profile.cookies, // Импортированные cookies
     };
 
     // Конвертируем в JSON и base64 для передачи через Rust
     const payload = JSON.stringify(launchConfig);
 
-    console.log('[LAUNCH] 📦 Payload размер:', payload.length, 'байт');
-    console.log('[LAUNCH] 📦 Proxy в payload:', JSON.stringify(launchConfig.proxy));
-
-    // Вызываем Rust команду для запуска браузера через новый лаунчер
+    // Вызываем Rust команду для запуска браузера через Playwright лаунчер
     await invoke('open_profile', {
-      appPath: 'advanced-antidetect', // Указываем использовать новый лаунчер
+      appPath: 'playwright', // Unified launcher: multi-engine + mobile fingerprints
       args: payload,
     });
-
-    console.log(`[LAUNCH] ✅ Профиль "${profile.name}" успешно запущен!`);
 
     return {
       success: true,
@@ -164,8 +141,6 @@ export async function launchProfile(profile: Profile) {
     };
 
   } catch (err: any) {
-    console.error('[LAUNCH] ❌ Ошибка запуска:', err.message || err);
-
     // Детальная обработка ошибок
     let errorMessage = 'Неизвестная ошибка';
 

@@ -2,7 +2,7 @@
 import { invoke } from '@tauri-apps/api/core';
 
 const GITHUB_REPO = 'CJ-aezakmi/AZMI';
-const CURRENT_VERSION = '2.0.0';
+const CURRENT_VERSION = '2.1.0';
 
 export interface UpdateInfo {
   available: boolean;
@@ -12,12 +12,21 @@ export interface UpdateInfo {
   publishedAt: string;
 }
 
+export interface PlaywrightUpdateInfo {
+  needsUpdate: boolean;
+  currentVersion: string;
+  latestVersion: string;
+}
+
 /**
  * Проверяет наличие обновлений на GitHub
  */
 export async function checkForUpdates(): Promise<UpdateInfo | null> {
   try {
-    const response = await fetch(`https://api.github.com/repos/${GITHUB_REPO}/releases/latest`);
+    const response = await fetch(`https://api.github.com/repos/${GITHUB_REPO}/releases/latest`, {
+      headers: { 'Accept': 'application/vnd.github.v3+json' },
+      signal: AbortSignal.timeout(10000)
+    });
 
     if (!response.ok) {
       console.error('Failed to check for updates:', response.statusText);
@@ -25,24 +34,15 @@ export async function checkForUpdates(): Promise<UpdateInfo | null> {
     }
 
     const release = await response.json();
-    const latestVersion = release.tag_name.replace(/^v/, ''); // Убираем 'v' из 'v2.0.1'
-
-    // Сравниваем версии
+    const latestVersion = release.tag_name.replace(/^v/, '');
     const isNewer = compareVersions(latestVersion, CURRENT_VERSION) > 0;
 
     if (!isNewer) {
-      return {
-        available: false,
-        version: CURRENT_VERSION,
-        downloadUrl: '',
-        releaseNotes: '',
-        publishedAt: ''
-      };
+      return { available: false, version: CURRENT_VERSION, downloadUrl: '', releaseNotes: '', publishedAt: '' };
     }
 
-    // Ищем установщик для Windows (.msi или .exe)
     const windowsAsset = release.assets.find((asset: any) =>
-      asset.name.endsWith('.msi') || asset.name.endsWith('.exe')
+      asset.name.endsWith('.exe') && !asset.name.toLowerCase().includes('launcher')
     );
 
     if (!windowsAsset) {
@@ -60,6 +60,50 @@ export async function checkForUpdates(): Promise<UpdateInfo | null> {
   } catch (error) {
     console.error('Error checking for updates:', error);
     return null;
+  }
+}
+
+/**
+ * Проверяет актуальность Playwright
+ */
+export async function checkPlaywrightUpdate(): Promise<PlaywrightUpdateInfo> {
+  try {
+    // Получаем текущую версию через Tauri
+    const currentVersion = await invoke<string>('get_playwright_version').catch(() => '0.0.0');
+    
+    // Проверяем последнюю версию на npm
+    const response = await fetch('https://registry.npmjs.org/playwright/latest', {
+      signal: AbortSignal.timeout(8000)
+    });
+    
+    if (!response.ok) {
+      return { needsUpdate: false, currentVersion, latestVersion: currentVersion };
+    }
+
+    const data = await response.json();
+    const latestVersion = data.version || currentVersion;
+
+    const needsUpdate = compareVersions(latestVersion, currentVersion) > 0;
+
+    return { needsUpdate, currentVersion, latestVersion };
+  } catch (error) {
+    console.error('Error checking Playwright version:', error);
+    return { needsUpdate: false, currentVersion: 'unknown', latestVersion: 'unknown' };
+  }
+}
+
+/**
+ * Обновляет Playwright до последней версии
+ */
+export async function updatePlaywright(onProgress?: (message: string) => void): Promise<boolean> {
+  try {
+    onProgress?.('Обновление Playwright...');
+    await invoke('update_playwright_runtime');
+    onProgress?.('Playwright обновлён!');
+    return true;
+  } catch (error) {
+    console.error('Error updating Playwright:', error);
+    return false;
   }
 }
 

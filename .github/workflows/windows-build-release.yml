@@ -2,11 +2,15 @@ name: Build & Release (Windows)
 
 on:
   push:
-    branches: [ main ]
+    branches: [main]
     tags: ['v*']
+  workflow_dispatch:
 
 permissions:
   contents: write
+
+env:
+  APP_VERSION: '2.1.0'
 
 jobs:
   build-windows:
@@ -23,61 +27,56 @@ jobs:
           node-version: '20'
 
       - name: Setup pnpm
-        run: npm install -g pnpm
+        run: npm install -g pnpm@latest
 
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: Install frontend dependencies
+        run: pnpm install --no-frozen-lockfile
 
       - name: Build web assets
         run: pnpm build
 
-      - name: Setup Rust toolchain
-        uses: actions-rs/toolchain@v1
-        with:
-          toolchain: stable-x86_64-pc-windows-msvc
-          profile: minimal
-          override: true
-
-      - name: Build Tauri app (Windows)
+      - name: Build Tauri app
+        uses: tauri-apps/tauri-action@v0
         env:
-          CARGO_HOME: ${{ runner.temp }}/cargo
-        run: pnpm tauri build --target x86_64-pc-windows-msvc
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tagName: v${{ env.APP_VERSION }}
+          releaseName: 'AEZAKMI Pro v${{ env.APP_VERSION }}'
+          releaseBody: |
+            # AEZAKMI Pro v${{ env.APP_VERSION }}
 
-      - name: Upload installer
+            ## Установка
+
+            1. Скачайте **AEZAKMI_${{ env.APP_VERSION }}_x64-setup.exe**
+            2. Запустите установщик
+            3. После установки запустите программу
+            4. При первом запуске программа предложит установить Node.js
+            5. Далее автоматически загрузятся необходимые браузеры
+
+            ## Системные требования
+
+            - Windows 10/11 (64-bit)
+            - 4 GB RAM (рекомендуется 8 GB)
+            - 2 GB свободного места
+            - Интернет-соединение
+          releaseDraft: false
+          prerelease: false
+          includeUpdaterJson: false
+
+      - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: aezakmi-installer
+          name: aezakmi-installer-windows
           path: |
-            src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/*.exe
-
-      - name: Create GitHub Release (on tag)
-        if: startsWith(github.ref, 'refs/tags/')
-        uses: ncipollo/release-action@v1
-        with:
-          artifacts: |
-            src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/*.exe
-          token: ${{ secrets.GITHUB_TOKEN }}
-          draft: false
-          prerelease: false
-          allowUpdates: true
-          replacesArtifacts: true
-          body: |
-            # AEZAKMI Pro v2.0.0 - Windows Edition
-            
-            ## 📦 Установка
-            
-            1. Скачайте **AEZAKMI_2.0.0_x64-setup.exe**
-            2. Запустите установщик
-            3. При первом запуске приложение автоматически установит:
-               - Node.js 20 Portable
-               - Playwright + Chromium
-            4. Дождитесь завершения установки (~5-10 минут)
-            5. Приложение готово к работе!
-            
-            ## 🔑 Лицензионные ключи
-            
-            Используйте один из ключей из `LICENSE_KEYS.md`
-            
-            ---
-            
-            **Примечание:** Первый запуск занимает 5-10 минут для установки зависимостей.
+            src-tauri/target/release/bundle/nsis/*.exe
+          retention-days: 30

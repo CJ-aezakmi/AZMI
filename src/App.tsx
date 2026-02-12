@@ -3,13 +3,16 @@ import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { useState, useEffect } from 'react';
 import Dashboard from './pages/Dashboard';
 import LicenseModal from './components/LicenseModal';
-import SystemSetup from './components/SystemSetup';
+import SetupWizard from './components/SetupWizard';
+import AppStatusBar from './components/AppStatusBar';
 import { checkLicense, LicenseInfo } from './lib/license';
 
 const App = () => {
   const [license, setLicense] = useState<LicenseInfo | null>(null);
   const [isCheckingLicense, setIsCheckingLicense] = useState(true);
-  const [systemReady, setSystemReady] = useState(false);
+  const [setupDone, setSetupDone] = useState(() => {
+    return localStorage.getItem('aezakmi_setup_done') === 'true';
+  });
 
   useEffect(() => {
     const verifyLicense = async () => {
@@ -26,8 +29,8 @@ const App = () => {
     setLicense(licenseInfo);
   };
 
-  const handleSystemSetupComplete = () => {
-    setSystemReady(true);
+  const handleSetupComplete = () => {
+    setSetupDone(true);
   };
 
   if (isCheckingLicense) {
@@ -50,13 +53,21 @@ const App = () => {
     );
   }
 
-  if (!systemReady) {
-    return <SystemSetup onComplete={handleSystemSetupComplete} />;
+  // Показываем мастер первоначальной настройки
+  if (!setupDone) {
+    return (
+      <>
+        <Toaster />
+        <SetupWizard onSetupComplete={handleSetupComplete} />
+      </>
+    );
   }
 
   return (
     <>
       <Toaster />
+      {/* Статус-бар: обновления + компоненты */}
+      <AppStatusBar />
       <BrowserRouter>
         <Routes>
           <Route path="/" element={<Dashboard />} />

@@ -1,19 +1,21 @@
 import { useState, useEffect } from 'react';
-import { Plus, Search, Play, Edit, Copy, Trash2, Globe, Folder, Puzzle, BarChart3, Settings, Download, Upload, RefreshCw } from 'lucide-react';
+import { Plus, Search, Play, Edit, Copy, Trash2, Globe, Folder, Puzzle, BarChart3, Settings, Download, Upload, RefreshCw, Cookie, Smartphone, Monitor } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import ProfileModal from '@/components/ProfileModal';
 import ProxyModal from '@/components/ProxyModal';
 import SXOrgIntegration from '@/components/SXOrgIntegration';
 import UpdateDialog from '@/components/UpdateDialog';
+import CookieBotModal from '@/components/CookieBotModal';
 import { toast } from 'sonner';
-import { Profile, Proxy } from '@/types';
+import { Profile, Proxy, BrowserEngine, CookieEntry } from '@/types';
 import { launchProfile } from '@/lib/launchProfile';
 import { safeConfirm, safePrompt } from '@/lib/safeDialog';
-import { checkForUpdates, downloadUpdate, installUpdate, UpdateInfo, shouldAutoCheck, setLastUpdateCheck, isAutoUpdateEnabled, getCurrentVersion } from '@/lib/updater';
+import { checkForUpdates, checkPlaywrightUpdate, updatePlaywright, downloadUpdate, installUpdate, UpdateInfo, shouldAutoCheck, setLastUpdateCheck, isAutoUpdateEnabled, getCurrentVersion } from '@/lib/updater';
 import { getSXOrgApiKey, SXOrgClient } from '@/lib/sxorg-api';
 
 const Dashboard = () => {
@@ -31,42 +33,17 @@ const Dashboard = () => {
   const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null);
   const [showUpdateDialog, setShowUpdateDialog] = useState(false);
   const [refreshingProxyIndex, setRefreshingProxyIndex] = useState<number | null>(null);
+  // Cookie Robot
+  const [cookieBotProfile, setCookieBotProfile] = useState<Profile | null>(null);
+  const [isCookieBotModalOpen, setIsCookieBotModalOpen] = useState(false);
+  // Playwright update banner
+  const [showPlaywrightBanner, setShowPlaywrightBanner] = useState(false);
+  const [isUpdatingPlaywright, setIsUpdatingPlaywright] = useState(false);
+  // Default browser engine setting
+  const [defaultEngine, setDefaultEngine] = useState<BrowserEngine>(
+    () => (localStorage.getItem('aezakmi_default_engine') as BrowserEngine) || 'chromium'
+  );
 
-
-  // Проверка Node.js при первом запуске
-  useEffect(() => {
-    const checkNodeJS = async () => {
-      const hasChecked = localStorage.getItem('nodejs_check_done');
-      if (hasChecked) return;
-
-      try {
-        const { invoke } = await import('@tauri-apps/api/core');
-        const result = await invoke('check_and_install_nodejs') as string;
-
-        if (result.includes('already installed')) {
-          localStorage.setItem('nodejs_check_done', 'true');
-        } else {
-          // Show installation message
-          if (window.confirm(
-            'Node.js не установлен на вашем компьютере.\n\n' +
-            'Он необходим для запуска браузерных профилей.\n\n' +
-            'Запустить установку сейчас?'
-          )) {
-            const installResult = await invoke('check_and_install_nodejs') as string;
-            alert(installResult);
-
-            if (installResult.includes('installation started')) {
-              localStorage.setItem('nodejs_check_done', 'true');
-            }
-          }
-        }
-      } catch (error) {
-        console.error('Node.js check failed:', error);
-      }
-    };
-
-    checkNodeJS();
-  }, []);
 
   // Загрузка данных из localStorage
   useEffect(() => {
@@ -436,25 +413,12 @@ const Dashboard = () => {
     }
   };
 
-  // Автоматическая проверка обновлений при запуске
+  // Проверка обновлений Playwright убрана (теперь в AppStatusBar)
+
+  // Persist default engine
   useEffect(() => {
-    const autoCheckUpdates = async () => {
-      if (isAutoUpdateEnabled() && shouldAutoCheck()) {
-        const update = await checkForUpdates();
-
-        if (update && update.available) {
-          setUpdateInfo(update);
-          setShowUpdateDialog(true);
-          setLastUpdateCheck();
-        }
-      }
-    };
-
-    // Задержка 3 секунды после загрузки приложения
-    const timer = setTimeout(autoCheckUpdates, 3000);
-
-    return () => clearTimeout(timer);
-  }, []);
+    localStorage.setItem('aezakmi_default_engine', defaultEngine);
+  }, [defaultEngine]);
 
   // Фильтрация профилей
   const filteredProfiles = profiles.filter(profile => {
@@ -502,7 +466,7 @@ const Dashboard = () => {
             <img src="/assets/logo.jpg" alt="AEZAKMI Logo" className="w-10 h-10 rounded-lg object-cover" />
             <div>
               <h1 className="font-bold text-lg">AEZAKMI Pro</h1>
-              <p className="text-xs text-gray-500">v2.0</p>
+              <p className="text-xs text-gray-500">v{getCurrentVersion()}</p>
             </div>
           </div>
         </div>
@@ -513,8 +477,8 @@ const Dashboard = () => {
               key={item.id}
               onClick={() => setActiveView(item.id)}
               className={`w-full flex items-center justify-between px-4 py-3 rounded-lg transition-colors ${activeView === item.id
-                  ? 'bg-blue-50 text-blue-600'
-                  : 'text-gray-700 hover:bg-gray-50'
+                ? 'bg-blue-50 text-blue-600'
+                : 'text-gray-700 hover:bg-gray-50'
                 }`}
             >
               <div className="flex items-center gap-3">
@@ -639,42 +603,142 @@ const Dashboard = () => {
                           <span className="font-medium">{profile.screenWidth}x{profile.screenHeight}</span>
                         </div>
                         <div className="flex justify-between">
+                          <span className="text-gray-600">Движок:</span>
+                          <span className="font-medium capitalize">{profile.browserEngine || defaultEngine}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-gray-600">Устройство:</span>
+                          <span className="font-medium flex items-center gap-1">
+                            {profile.mobileEmulation?.enabled
+                              ? <><Smartphone className="w-3 h-3" /> {profile.mobileEmulation.deviceName || 'Мобильное'}</>
+                              : <><Monitor className="w-3 h-3" /> Десктоп</>}
+                          </span>
+                        </div>
+                        <div className="flex justify-between">
                           <span className="text-gray-600">Прокси:</span>
                           <span className="font-medium">
                             {profile.proxy?.enabled ? `${profile.proxy.host}:${profile.proxy.port}` : 'Нет'}
                           </span>
                         </div>
+                        {profile.cookies && profile.cookies.length > 0 && (
+                          <div className="flex justify-between">
+                            <span className="text-gray-600">Cookies:</span>
+                            <span className="font-medium text-amber-600">🍪 {profile.cookies.length}</span>
+                          </div>
+                        )}
                       </div>
-                      <div className="flex gap-2 pt-2">
+                      <div className="space-y-2 pt-2">
                         <Button
                           size="sm"
-                          className="flex-1"
+                          className="w-full"
                           onClick={() => launchProfile(profile)}
                         >
                           <Play className="w-4 h-4 mr-1" />
                           Запустить
                         </Button>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => handleEditProfile(profile.id)}
-                        >
-                          <Edit className="w-4 h-4" />
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => handleCloneProfile(profile.id)}
-                        >
-                          <Copy className="w-4 h-4" />
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => handleDeleteProfile(profile.id)}
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </Button>
+                        <div className="flex gap-2">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="flex-1"
+                            title="Cookie Robot"
+                            onClick={() => {
+                              setCookieBotProfile(profile);
+                              setIsCookieBotModalOpen(true);
+                            }}
+                          >
+                            <Cookie className="w-4 h-4" />
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="flex-1"
+                            title="Импорт Cookies"
+                          onClick={() => {
+                            const input = document.createElement('input');
+                            input.type = 'file';
+                            input.accept = '.json,.txt';
+                            input.onchange = (e) => {
+                              const file = (e.target as HTMLInputElement).files?.[0];
+                              if (file) {
+                                const reader = new FileReader();
+                                reader.onload = (event) => {
+                                  try {
+                                    const text = event.target?.result as string;
+                                    let cookies: CookieEntry[] = [];
+                                    // Поддержка JSON формата (EditThisCookie / Netscape JSON)
+                                    try {
+                                      const parsed = JSON.parse(text);
+                                      if (Array.isArray(parsed)) {
+                                        cookies = parsed.map((c: any) => ({
+                                          name: c.name,
+                                          value: c.value,
+                                          domain: c.domain,
+                                          path: c.path || '/',
+                                          expires: c.expirationDate || c.expires || undefined,
+                                          httpOnly: c.httpOnly || false,
+                                          secure: c.secure || false,
+                                          sameSite: c.sameSite === 'no_restriction' ? 'None' : c.sameSite === 'lax' ? 'Lax' : c.sameSite === 'strict' ? 'Strict' : 'Lax',
+                                        }));
+                                      }
+                                    } catch {
+                                      // Netscape TXT формат
+                                      const lines = text.split('\n').filter(l => l.trim() && !l.startsWith('#'));
+                                      cookies = lines.map(line => {
+                                        const parts = line.split('\t');
+                                        if (parts.length >= 7) {
+                                          return {
+                                            name: parts[5],
+                                            value: parts[6],
+                                            domain: parts[0],
+                                            path: parts[2] || '/',
+                                            expires: parts[4] ? Number(parts[4]) : undefined,
+                                            httpOnly: parts[1]?.toUpperCase() === 'TRUE',
+                                            secure: parts[3]?.toUpperCase() === 'TRUE',
+                                            sameSite: 'Lax' as const,
+                                          };
+                                        }
+                                        return null;
+                                      }).filter(Boolean) as CookieEntry[];
+                                    }
+                                    if (cookies.length > 0) {
+                                      const updatedProfiles = profiles.map(p =>
+                                        p.id === profile.id ? { ...p, cookies, updatedAt: new Date().toISOString() } : p
+                                      );
+                                      saveProfiles(updatedProfiles);
+                                      toast.success(`Загружено ${cookies.length} cookies для "${profile.name}"`);
+                                    } else {
+                                      toast.error('Не удалось распознать cookies в файле');
+                                    }
+                                  } catch {
+                                    toast.error('Ошибка чтения файла cookies');
+                                  }
+                                };
+                                reader.readAsText(file);
+                              }
+                            };
+                            input.click();
+                          }}
+                          >
+                            <Upload className="w-4 h-4" />
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="flex-1"
+                            onClick={() => handleEditProfile(profile.id)}
+                          >
+                            <Edit className="w-4 h-4" />
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="flex-1"
+                            onClick={() => handleDeleteProfile(profile.id)}
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </Button>
+                        </div>
                       </div>
                     </CardContent>
                   </Card>
@@ -955,6 +1019,24 @@ const Dashboard = () => {
           <div className="p-8">
             <h2 className="text-2xl font-bold mb-6">Настройки приложения</h2>
             <div className="space-y-4 max-w-2xl">
+              {/* Движок браузера по умолчанию */}
+              <Card className="bg-white/95 backdrop-blur-sm">
+                <CardHeader>
+                  <CardTitle>Движок браузера</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <p className="text-sm text-gray-600 mb-3">Выберите движок браузера, который будет использоваться по умолчанию для новых профилей</p>
+                  <Select value={defaultEngine} onValueChange={(v) => setDefaultEngine(v as BrowserEngine)}>
+                    <SelectTrigger className="w-full">
+                      <SelectValue placeholder="Выберите движок" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="chromium">Chromium (Рекомендуется)</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </CardContent>
+              </Card>
+
               <Card className="bg-white/95 backdrop-blur-sm">
                 <CardHeader>
                   <CardTitle>Общие настройки</CardTitle>
@@ -965,21 +1047,30 @@ const Dashboard = () => {
                       <p className="font-medium">Автозапуск при старте системы</p>
                       <p className="text-sm text-gray-600">Запускать AEZAKMI при включении компьютера</p>
                     </div>
-                    <Checkbox defaultChecked />
+                    <Checkbox
+                      checked={localStorage.getItem('aezakmi_autostart') === 'true'}
+                      onCheckedChange={(v) => localStorage.setItem('aezakmi_autostart', String(v))}
+                    />
                   </div>
                   <div className="flex items-center justify-between">
                     <div>
                       <p className="font-medium">Минимизировать в трей</p>
                       <p className="text-sm text-gray-600">Сворачивать приложение в системный трей</p>
                     </div>
-                    <Checkbox defaultChecked />
+                    <Checkbox
+                      checked={localStorage.getItem('aezakmi_tray') !== 'false'}
+                      onCheckedChange={(v) => localStorage.setItem('aezakmi_tray', String(v))}
+                    />
                   </div>
                   <div className="flex items-center justify-between">
                     <div>
                       <p className="font-medium">Автоматическое обновление</p>
-                      <p className="text-sm text-gray-600">Проверять наличие новых версий</p>
+                      <p className="text-sm text-gray-600">Проверять наличие новых версий при запуске</p>
                     </div>
-                    <Checkbox defaultChecked />
+                    <Checkbox
+                      checked={localStorage.getItem('aezakmi_auto_update') !== 'false'}
+                      onCheckedChange={(v) => localStorage.setItem('aezakmi_auto_update', String(v))}
+                    />
                   </div>
                 </CardContent>
               </Card>
@@ -994,21 +1085,52 @@ const Dashboard = () => {
                       <p className="font-medium">Очистка cookies при закрытии</p>
                       <p className="text-sm text-gray-600">Удалять cookies после завершения сеанса</p>
                     </div>
-                    <Checkbox />
+                    <Checkbox
+                      checked={localStorage.getItem('aezakmi_clear_cookies') === 'true'}
+                      onCheckedChange={(v) => localStorage.setItem('aezakmi_clear_cookies', String(v))}
+                    />
                   </div>
                   <div className="flex items-center justify-between">
                     <div>
                       <p className="font-medium">Блокировка WebRTC по умолчанию</p>
                       <p className="text-sm text-gray-600">Включать блокировку WebRTC для новых профилей</p>
                     </div>
-                    <Checkbox defaultChecked />
+                    <Checkbox
+                      checked={localStorage.getItem('aezakmi_block_webrtc') !== 'false'}
+                      onCheckedChange={(v) => localStorage.setItem('aezakmi_block_webrtc', String(v))}
+                    />
                   </div>
                   <div className="flex items-center justify-between">
                     <div>
                       <p className="font-medium">Защита от скриншотов</p>
                       <p className="text-sm text-gray-600">Блокировать создание скриншотов окон браузера</p>
                     </div>
-                    <Checkbox defaultChecked />
+                    <Checkbox
+                      checked={localStorage.getItem('aezakmi_screenshot_protection') === 'true'}
+                      onCheckedChange={(v) => localStorage.setItem('aezakmi_screenshot_protection', String(v))}
+                    />
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card className="bg-white/95 backdrop-blur-sm">
+                <CardHeader>
+                  <CardTitle>Компоненты</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="font-medium">Playwright</p>
+                        <p className="text-sm text-gray-600">Компоненты автоматизации браузера</p>
+                      </div>
+                      <div className="flex gap-2">
+                        {isUpdatingPlaywright && <RefreshCw className="w-4 h-4 animate-spin text-blue-500" />}
+                        <Button variant="outline" size="sm" onClick={handleCheckPlaywright}>
+                          Проверить
+                        </Button>
+                      </div>
+                    </div>
                   </div>
                 </CardContent>
               </Card>
@@ -1064,6 +1186,17 @@ const Dashboard = () => {
         onUpdate={handleInstallUpdate}
         onLater={() => setShowUpdateDialog(false)}
       />
+
+      {cookieBotProfile && (
+        <CookieBotModal
+          open={isCookieBotModalOpen}
+          onOpenChange={(open) => {
+            setIsCookieBotModalOpen(open);
+            if (!open) setCookieBotProfile(null);
+          }}
+          profile={cookieBotProfile}
+        />
+      )}
     </div>
   );
 };

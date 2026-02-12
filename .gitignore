@@ -15,7 +15,6 @@ bundle/
 
 # Rust
 target/
-Cargo.lock
 
 # User data (не должно попадать в git)
 aezakmi_used_keys.txt

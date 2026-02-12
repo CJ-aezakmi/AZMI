@@ -95,7 +95,7 @@ class DependencyManager {
         return { installed: true, version, portable: true };
       }
     } catch (err) {
-      console.warn('Portable Node.js not found:', err);
+      // Portable Node.js not found
     }
 
     // Проверяем системный Node.js
@@ -106,7 +106,7 @@ class DependencyManager {
         return { installed: true, version: output.stdout.trim(), portable: false };
       }
     } catch (err) {
-      console.warn('System Node.js not found:', err);
+      // System Node.js not found
     }
 
     return { installed: false, portable: false };
@@ -141,7 +141,7 @@ class DependencyManager {
         return { installed: true, version: output.stdout.trim() };
       }
     } catch (err) {
-      console.warn('Playwright check failed:', err);
+      // Playwright check failed
     }
 
     return { installed: false };
@@ -165,7 +165,6 @@ class DependencyManager {
         installed: chromiumExists,
       };
     } catch (err) {
-      console.warn('Browser check failed:', err);
       return { chromium: false, installed: false };
     }
   }

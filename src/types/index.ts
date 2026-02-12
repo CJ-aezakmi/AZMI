@@ -94,7 +94,28 @@ export interface Antidetect {
 }
 
 // Типы браузеров
-export type BrowserEngine = 'chromium' | 'firefox' | 'camoufox' | 'webkit';
+export type BrowserEngine = 'chromium';
+
+// Эмуляция мобильного устройства
+export interface MobileEmulation {
+  enabled: boolean;
+  deviceName?: string;
+  width?: number;
+  height?: number;
+  deviceScaleFactor?: number;
+  isMobile?: boolean;
+  hasTouch?: boolean;
+  userAgent?: string;
+}
+
+// Предустановки мобильных устройств
+export const MOBILE_DEVICES: Record<string, MobileEmulation> = {
+  'iPhone 14': { enabled: true, deviceName: 'iPhone 14', width: 390, height: 844, deviceScaleFactor: 3, isMobile: true, hasTouch: true, userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.0 Mobile/15E148 Safari/604.1' },
+  'iPhone 15 Pro': { enabled: true, deviceName: 'iPhone 15 Pro', width: 393, height: 852, deviceScaleFactor: 3, isMobile: true, hasTouch: true, userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1' },
+  'Pixel 7': { enabled: true, deviceName: 'Pixel 7', width: 412, height: 915, deviceScaleFactor: 2.625, isMobile: true, hasTouch: true, userAgent: 'Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.0.0 Mobile Safari/537.36' },
+  'Samsung Galaxy S23': { enabled: true, deviceName: 'Samsung Galaxy S23', width: 360, height: 780, deviceScaleFactor: 3, isMobile: true, hasTouch: true, userAgent: 'Mozilla/5.0 (Linux; Android 13; SM-S911B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.0.0 Mobile Safari/537.36' },
+  'iPad Air': { enabled: true, deviceName: 'iPad Air', width: 820, height: 1180, deviceScaleFactor: 2, isMobile: true, hasTouch: true, userAgent: 'Mozilla/5.0 (iPad; CPU OS 16_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.0 Mobile/15E148 Safari/604.1' },
+};
 
 export interface Profile {
   id: string;
@@ -109,6 +130,7 @@ export interface Profile {
   screenWidth: number;
   screenHeight: number;
   timezone?: string;
+  homepage?: string; // Домашняя страница, загружаемая при запуске браузера
   // Optional freeform notes attached to profile
   notes?: string;
   folder?: string; // Папка для группировки профилей
@@ -118,6 +140,12 @@ export interface Profile {
   createdAt: string;
   updatedAt?: string;
   status: 'ready' | 'active' | 'inactive';
+  // Мобильная эмуляция
+  mobileEmulation?: MobileEmulation;
+  // Cookie robot
+  cookieBotLastRun?: string;
+  // Импортированные cookies (формат Netscape/JSON)
+  cookies?: CookieEntry[];
 
   // Дополнительные метаданные
   lastUsed?: string;
@@ -138,4 +166,21 @@ export interface LaunchConfig {
   url?: string;
   antidetect?: Antidetect;
   os?: string;
+  mobileEmulation?: MobileEmulation;
+  locale?: string; // Язык браузера (например, 'ru-RU', 'en-US')
+  timezoneId?: string; // Часовой пояс (например, 'Europe/Moscow', 'America/New_York')
+  autoDetectLocale?: boolean; // Флаг: определить timezone/language по реальному исходящему IP прокси
+  cookies?: CookieEntry[]; // Cookies для загрузки в браузер
+}
+
+// Cookie запись для импорта/экспорта
+export interface CookieEntry {
+  name: string;
+  value: string;
+  domain: string;
+  path?: string;
+  expires?: number;
+  httpOnly?: boolean;
+  secure?: boolean;
+  sameSite?: 'Strict' | 'Lax' | 'None';
 }

@@ -98,7 +98,7 @@ const ProxyModal = ({ open, onOpenChange, onAdd }: ProxyModalProps) => {
         } as Proxy;
       }
     } catch (error) {
-      console.warn('Failed to parse proxy line:', line, error);
+      // Failed to parse proxy line
     }
     return null;
   };
