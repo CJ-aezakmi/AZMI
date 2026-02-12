@@ -21,18 +21,40 @@ const error = console.error.bind(console); // Errors всегда показыв
 const scriptDir = __dirname;
 const appDir = path.dirname(scriptDir);
 
-// В dev режиме playwright-cache может быть на 2 уровня выше
-let browserCachePath = path.join(appDir, 'playwright-cache');
-const devCachePath = path.join(appDir, '..', '..', 'playwright-cache');
-if (fs.existsSync(devCachePath) && !fs.existsSync(browserCachePath)) {
-  browserCachePath = devCachePath;
-  log('[LAUNCHER] Dev-режим: кеш из корневой папки');
+// PLAYWRIGHT_BROWSERS_PATH: приоритет — значение от Rust (через env),
+// потом %LOCALAPPDATA%, потом fallback рядом с exe
+let browserCachePath = process.env.PLAYWRIGHT_BROWSERS_PATH || '';
+
+if (!browserCachePath || !fs.existsSync(browserCachePath)) {
+  // Пробуем %LOCALAPPDATA%/AEZAKMI Pro/playwright-cache (production путь)
+  const localAppData = process.env.LOCALAPPDATA || '';
+  if (localAppData) {
+    const localCachePath = path.join(localAppData, 'AEZAKMI Pro', 'playwright-cache');
+    if (fs.existsSync(localCachePath)) {
+      browserCachePath = localCachePath;
+      log('[LAUNCHER] Кеш из LOCALAPPDATA:', browserCachePath);
+    }
+  }
 }
+
+if (!browserCachePath || !fs.existsSync(browserCachePath)) {
+  // Dev mode: ищем в корне проекта (2 уровня вверх от scripts/)
+  const devCachePath = path.join(appDir, '..', '..', 'playwright-cache');
+  if (fs.existsSync(devCachePath)) {
+    browserCachePath = devCachePath;
+    log('[LAUNCHER] Dev-режим: кеш из корневой папки');
+  } else {
+    // Крайний fallback: рядом с exe
+    browserCachePath = path.join(appDir, 'playwright-cache');
+  }
+}
+
 process.env.PLAYWRIGHT_BROWSERS_PATH = browserCachePath;
 
 log('[LAUNCHER] Скрипт:', scriptDir);
 log('[LAUNCHER] Приложение:', appDir);
 log('[LAUNCHER] Кеш браузеров:', browserCachePath);
+log('[LAUNCHER] Кеш существует:', fs.existsSync(browserCachePath));
 
 // ─── LOAD PLAYWRIGHT ──────────────────────────────────────────────────
 const playwrightPaths = [

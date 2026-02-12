@@ -2,7 +2,7 @@
 import { invoke } from '@tauri-apps/api/core';
 
 const GITHUB_REPO = 'CJ-aezakmi/AZMI';
-const CURRENT_VERSION = '2.2.3';
+const CURRENT_VERSION = '2.2.5';
 
 export interface UpdateInfo {
   available: boolean;
