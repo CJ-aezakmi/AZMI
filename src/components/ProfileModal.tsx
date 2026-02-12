@@ -10,6 +10,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Profile, Proxy, BrowserEngine, MobileEmulation, MOBILE_DEVICES, CookieEntry } from '@/types';
 import { Zap, Globe, Smartphone, Monitor, Upload, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
+import sxorgLogo from '@/assets/sxorg-logo.svg';
 
 interface ProfileModalProps {
   open: boolean;
@@ -658,7 +659,7 @@ const ProfileModal = ({ open, onOpenChange, onSave, profile, proxies, folders = 
                       onClick={onOpenSXOrg}
                       className="bg-blue-100 border-2 border-blue-300 hover:border-blue-400 hover:bg-blue-200 px-3 py-2"
                     >
-                      <img src="/src/assets/sxorg-logo.svg" alt="SX.ORG" className="h-4 w-auto" style={{ minWidth: '48px' }} />
+                      <img src={sxorgLogo} alt="SX.ORG" className="h-4 w-auto" style={{ minWidth: '48px' }} />
                     </Button>
                   )}
                 </div>

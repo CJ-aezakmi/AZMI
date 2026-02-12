@@ -17,6 +17,7 @@ import { launchProfile } from '@/lib/launchProfile';
 import { safeConfirm, safePrompt } from '@/lib/safeDialog';
 import { checkForUpdates, checkPlaywrightUpdate, updatePlaywright, downloadUpdate, installUpdate, UpdateInfo, shouldAutoCheck, setLastUpdateCheck, isAutoUpdateEnabled, getCurrentVersion } from '@/lib/updater';
 import { getSXOrgApiKey, SXOrgClient } from '@/lib/sxorg-api';
+import sxorgLogo from '@/assets/sxorg-logo.svg';
 
 const Dashboard = () => {
   const [activeView, setActiveView] = useState('profiles');
@@ -851,7 +852,7 @@ const Dashboard = () => {
                   variant="outline"
                   className="bg-blue-100 border-2 border-blue-300 hover:border-blue-400 hover:bg-blue-200 px-4 py-2.5 h-auto"
                 >
-                  <img src="/src/assets/sxorg-logo.svg" alt="SX.ORG" className="h-5 w-auto" style={{ minWidth: '60px' }} />
+                  <img src={sxorgLogo} alt="SX.ORG" className="h-5 w-auto" style={{ minWidth: '60px' }} />
                 </Button>
                 <Button onClick={() => setIsProxyModalOpen(true)}>
                   <Plus className="w-4 h-4 mr-2" />
