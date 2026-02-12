@@ -57,22 +57,50 @@ log('[LAUNCHER] Кеш браузеров:', browserCachePath);
 log('[LAUNCHER] Кеш существует:', fs.existsSync(browserCachePath));
 
 // ─── LOAD PLAYWRIGHT ──────────────────────────────────────────────────
-const playwrightPaths = [
-  path.join(appDir, 'playwright', 'modules', 'playwright'),       // Production: modules/ (renamed from node_modules)
-  path.join(appDir, 'playwright', 'node_modules', 'playwright'),  // Dev/fallback
-  path.join(appDir, 'node_modules', 'playwright'),                // Alt fallback
-  'playwright'                                                     // System
+// ВАЖНО: загружаем playwright-core НАПРЯМУЮ по абсолютному пути!
+// Раньше require('playwright') делал require('playwright-core') без пути,
+// и Node.js мог найти НЕПРАВИЛЬНУЮ версию playwright-core из node_modules/
+// вместо нашей bundled версии из modules/.
+const playwrightCorePaths = [
+  path.join(appDir, 'playwright', 'modules', 'playwright-core'),       // Production: modules/
+  path.join(appDir, 'playwright', 'node_modules', 'playwright-core'),  // Dev/fallback
+  path.join(appDir, 'node_modules', 'playwright-core'),                // Alt fallback
+];
+
+// Также пробуем playwright (wrapper), но только если прямой путь к core не сработал
+const playwrightWrapperPaths = [
+  path.join(appDir, 'playwright', 'modules', 'playwright'),
+  path.join(appDir, 'playwright', 'node_modules', 'playwright'),
+  path.join(appDir, 'node_modules', 'playwright'),
+  'playwright'
 ];
 
 let playwright = null;
-for (const tryPath of playwrightPaths) {
-  if (fs.existsSync(tryPath) || tryPath === 'playwright') {
+
+// Метод 1: playwright-core напрямую (надёжный — без промежуточного require)
+for (const tryPath of playwrightCorePaths) {
+  if (fs.existsSync(tryPath)) {
     try {
       playwright = require(tryPath);
-      log('[LAUNCHER] ✅ Playwright загружен из:', tryPath);
+      log('[LAUNCHER] ✅ playwright-core загружен из:', tryPath);
       break;
     } catch (err) {
-      log('[LAUNCHER] ❌ Не удалось загрузить из:', tryPath, err.message);
+      log('[LAUNCHER] ❌ playwright-core не удалось:', tryPath, err.message);
+    }
+  }
+}
+
+// Метод 2: playwright wrapper (fallback)
+if (!playwright) {
+  for (const tryPath of playwrightWrapperPaths) {
+    if (fs.existsSync(tryPath) || tryPath === 'playwright') {
+      try {
+        playwright = require(tryPath);
+        log('[LAUNCHER] ✅ Playwright (wrapper) загружен из:', tryPath);
+        break;
+      } catch (err) {
+        log('[LAUNCHER] ❌ Не удалось загрузить из:', tryPath, err.message);
+      }
     }
   }
 }

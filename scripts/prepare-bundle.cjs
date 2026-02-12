@@ -236,26 +236,54 @@ if (fs.existsSync(browsersJsonPath)) {
   try {
     const browsersData = JSON.parse(fs.readFileSync(browsersJsonPath, 'utf8'));
     const chromium = browsersData.browsers.find(b => b.name === 'chromium');
+    const headlessShell = browsersData.browsers.find(b => b.name === 'chromium-headless-shell');
     
     if (chromium) {
       const revision = chromium.revision;
       const browserVersion = chromium.browserVersion;
       
-      // CFT URL format (used by Playwright for Windows x64):
-      // https://cdn.playwright.dev/builds/cft/{browserVersion}/win64/chrome-win64.zip
+      // Собираем все нужные компоненты для загрузки
+      const components = [
+        {
+          name: 'chromium',
+          revision,
+          browserVersion,
+          dirName: `chromium-${revision}`,
+          downloadUrls: [
+            `https://cdn.playwright.dev/builds/cft/${browserVersion}/win64/chrome-win64.zip`,
+            `https://playwright.download.prss.microsoft.com/dbazure/download/playwright/builds/cft/${browserVersion}/win64/chrome-win64.zip`,
+            `https://storage.googleapis.com/chrome-for-testing-public/${browserVersion}/win64/chrome-win64.zip`
+          ],
+          executableCheck: ['chrome-win64', 'chrome.exe']
+        }
+      ];
+      
+      // Headless shell тоже нужен — Playwright требует его для работы!
+      if (headlessShell) {
+        const hsVersion = headlessShell.browserVersion;
+        const hsRevision = headlessShell.revision;
+        components.push({
+          name: 'chromium-headless-shell',
+          revision: hsRevision,
+          browserVersion: hsVersion,
+          dirName: `chromium_headless_shell-${hsRevision}`,
+          downloadUrls: [
+            `https://cdn.playwright.dev/builds/cft/${hsVersion}/win64/chrome-headless-shell-win64.zip`,
+            `https://playwright.download.prss.microsoft.com/dbazure/download/playwright/builds/cft/${hsVersion}/win64/chrome-headless-shell-win64.zip`,
+            `https://storage.googleapis.com/chrome-for-testing-public/${hsVersion}/win64/chrome-headless-shell-win64.zip`
+          ],
+          executableCheck: ['chrome-headless-shell-win64', 'chrome-headless-shell.exe']
+        });
+      }
+      
       const chromiumInfo = {
         revision,
         browserVersion,
-        downloadUrls: [
-          `https://cdn.playwright.dev/builds/cft/${browserVersion}/win64/chrome-win64.zip`,
-          `https://playwright.download.prss.microsoft.com/dbazure/download/playwright/builds/cft/${browserVersion}/win64/chrome-win64.zip`,
-          `https://storage.googleapis.com/chrome-for-testing-public/${browserVersion}/win64/chrome-win64.zip`
-        ],
-        executablePath: ['chrome-win64', 'chrome.exe']
+        components
       };
       
       fs.writeFileSync(chromiumInfoPath, JSON.stringify(chromiumInfo, null, 2));
-      console.log(`   ✅ chromium-info.json: revision=${revision}, version=${browserVersion}`);
+      console.log(`   ✅ chromium-info.json: revision=${revision}, version=${browserVersion}, components=${components.length}`);
     } else {
       console.error('   ❌ Chromium не найден в browsers.json');
       process.exit(1);

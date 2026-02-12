@@ -1,4 +1,4 @@
-// src-tauri/src/lib.rs — AEZAKMI Pro v2.2.5
+// src-tauri/src/lib.rs — AEZAKMI Pro v2.2.6
 
 use base64::Engine;
 use tauri::Manager;
@@ -12,7 +12,7 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_shell::init())
         .setup(|app| {
-            println!("[STARTUP] AEZAKMI Pro v2.2.5");
+            println!("[STARTUP] AEZAKMI Pro v2.2.6");
             
             #[cfg(debug_assertions)]
             if let Some(window) = app.get_webview_window("main") {
@@ -639,23 +639,42 @@ async fn check_browsers_installed(_app: tauri::AppHandle) -> Result<bool, String
                 return Ok(false);
             }
             
-            // Ищем любую папку chromium-*
-            let has_chromium = std::fs::read_dir(&cache_dir)
-                .ok()
-                .map(|entries| entries.filter_map(|e| e.ok())
-                    .any(|e| {
-                        let name = e.file_name().to_string_lossy().to_string();
-                        name.starts_with("chromium-") && e.path().is_dir()
-                    }))
-                .unwrap_or(false);
-            
-            if has_chromium {
-                println!("[CHECK] ✓ Chromium найден в {}", cache_dir.display());
-            } else {
-                println!("[CHECK] Chromium НЕ найден в {}", cache_dir.display());
+            // Получаем список требуемых компонентов
+            let components = get_browser_components().unwrap_or_default();
+            if components.is_empty() {
+                // Fallback: проверяем хотя бы chromium-*
+                let has_chromium = std::fs::read_dir(&cache_dir).ok()
+                    .map(|entries| entries.filter_map(|e| e.ok())
+                        .any(|e| e.file_name().to_string_lossy().starts_with("chromium-") && e.path().is_dir()))
+                    .unwrap_or(false);
+                return Ok(has_chromium);
             }
             
-            Ok(has_chromium)
+            // Проверяем ВСЕ компоненты
+            for comp in &components {
+                let comp_dir = cache_dir.join(&comp.dir_name);
+                if !comp_dir.exists() || !comp_dir.is_dir() {
+                    println!("[CHECK] ✗ Компонент '{}' НЕ найден: {}", comp.name, comp_dir.display());
+                    return Ok(false);
+                }
+                // Проверяем executable
+                if !comp.executable_check.is_empty() {
+                    let mut exe_path = comp_dir.clone();
+                    for part in &comp.executable_check {
+                        exe_path = exe_path.join(part);
+                    }
+                    if !exe_path.exists() {
+                        println!("[CHECK] ✗ Executable НЕ найден: {}", exe_path.display());
+                        return Ok(false);
+                    }
+                    println!("[CHECK] ✓ {} -> {}", comp.name, exe_path.display());
+                } else {
+                    println!("[CHECK] ✓ {} директория есть: {}", comp.name, comp_dir.display());
+                }
+            }
+            
+            println!("[CHECK] ✓ Все {} компонентов установлены в {}", components.len(), cache_dir.display());
+            Ok(true)
         }
         Err(e) => {
             println!("[CHECK] Ошибка получения пути к кешу: {}", e);
@@ -784,17 +803,17 @@ fn get_playwright_cache_dir() -> Result<std::path::PathBuf, String> {
 }
 
 /// Устанавливает Chromium браузер через bundled playwright CLI
-/// Информация о Chromium для прямой загрузки (без npx/playwright CLI)
-struct ChromiumInfo {
-    revision: String,
-    browser_version: String,
+/// Компонент для скачивания (chromium, headless-shell, ...)
+struct BrowserComponent {
+    name: String,
+    dir_name: String,
     download_urls: Vec<String>,
+    executable_check: Vec<String>,
 }
 
 /// Читает chromium-info.json из ресурсов приложения.
-/// Файл генерируется prepare-bundle.cjs из browsers.json playwright-core.
-/// Fallback: захардкоженные значения для Playwright 1.50.x.
-fn get_chromium_info() -> Result<ChromiumInfo, String> {
+/// Возвращает список компонентов для загрузки.
+fn get_browser_components() -> Result<Vec<BrowserComponent>, String> {
     let mut info_paths = Vec::new();
     
     if let Ok(app_dir) = get_app_dir() {
@@ -827,68 +846,100 @@ fn get_chromium_info() -> Result<ChromiumInfo, String> {
             let json: serde_json::Value = serde_json::from_str(&content)
                 .map_err(|e| format!("Ошибка парсинга chromium-info.json: {}", e))?;
             
-            let revision = json.get("revision").and_then(|v| v.as_str())
-                .ok_or("revision не найден в chromium-info.json")?.to_string();
-            let browser_version = json.get("browserVersion").and_then(|v| v.as_str())
-                .ok_or("browserVersion не найден в chromium-info.json")?.to_string();
+            // Новый формат с components[]
+            if let Some(components) = json.get("components").and_then(|v| v.as_array()) {
+                let mut result = Vec::new();
+                for comp in components {
+                    let name = comp.get("name").and_then(|v| v.as_str()).unwrap_or("unknown").to_string();
+                    let dir_name = comp.get("dirName").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                    let urls: Vec<String> = comp.get("downloadUrls").and_then(|v| v.as_array())
+                        .unwrap_or(&Vec::new())
+                        .iter()
+                        .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                        .collect();
+                    let exec_check: Vec<String> = comp.get("executableCheck").and_then(|v| v.as_array())
+                        .unwrap_or(&Vec::new())
+                        .iter()
+                        .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                        .collect();
+                    
+                    if !dir_name.is_empty() && !urls.is_empty() {
+                        result.push(BrowserComponent { name, dir_name, download_urls: urls, executable_check: exec_check });
+                    }
+                }
+                println!("[CHROMIUM_INFO] Загружено компонентов: {}", result.len());
+                return Ok(result);
+            }
+            
+            // Старый формат (совместимость)
+            let revision = json.get("revision").and_then(|v| v.as_str()).unwrap_or("1208").to_string();
+            let browser_version = json.get("browserVersion").and_then(|v| v.as_str()).unwrap_or("145.0.7632.6").to_string();
             let urls: Vec<String> = json.get("downloadUrls").and_then(|v| v.as_array())
-                .ok_or("downloadUrls не найден в chromium-info.json")?
+                .unwrap_or(&Vec::new())
                 .iter()
                 .filter_map(|v| v.as_str().map(|s| s.to_string()))
                 .collect();
             
-            if urls.is_empty() {
-                return Err("downloadUrls пустой в chromium-info.json".to_string());
-            }
-            
-            println!("[CHROMIUM_INFO] revision={}, version={}, urls={}", revision, browser_version, urls.len());
-            return Ok(ChromiumInfo { revision, browser_version, download_urls: urls });
+            let mut result = vec![BrowserComponent {
+                name: "chromium".to_string(),
+                dir_name: format!("chromium-{}", revision),
+                download_urls: if urls.is_empty() { get_fallback_chromium_urls(&browser_version) } else { urls },
+                executable_check: vec!["chrome-win64".to_string(), "chrome.exe".to_string()],
+            }];
+            // Добавить headless-shell
+            result.push(BrowserComponent {
+                name: "chromium-headless-shell".to_string(),
+                dir_name: format!("chromium_headless_shell-{}", revision),
+                download_urls: get_fallback_headless_urls(&browser_version),
+                executable_check: vec!["chrome-headless-shell-win64".to_string(), "chrome-headless-shell.exe".to_string()],
+            });
+            return Ok(result);
         }
     }
     
-    // Fallback: захардкоженные значения для Playwright 1.50.x
+    // Fallback: захардкоженные значения для Playwright 1.58.x
     println!("[CHROMIUM_INFO] Файл не найден, используем встроенные значения");
-    Ok(ChromiumInfo {
-        revision: "1208".to_string(),
-        browser_version: "145.0.7632.6".to_string(),
-        download_urls: vec![
-            "https://cdn.playwright.dev/builds/cft/145.0.7632.6/win64/chrome-win64.zip".to_string(),
-            "https://playwright.download.prss.microsoft.com/dbazure/download/playwright/builds/cft/145.0.7632.6/win64/chrome-win64.zip".to_string(),
-            "https://storage.googleapis.com/chrome-for-testing-public/145.0.7632.6/win64/chrome-win64.zip".to_string(),
-        ],
-    })
+    Ok(vec![
+        BrowserComponent {
+            name: "chromium".to_string(),
+            dir_name: "chromium-1208".to_string(),
+            download_urls: get_fallback_chromium_urls("145.0.7632.6"),
+            executable_check: vec!["chrome-win64".to_string(), "chrome.exe".to_string()],
+        },
+        BrowserComponent {
+            name: "chromium-headless-shell".to_string(),
+            dir_name: "chromium_headless_shell-1208".to_string(),
+            download_urls: get_fallback_headless_urls("145.0.7632.6"),
+            executable_check: vec!["chrome-headless-shell-win64".to_string(), "chrome-headless-shell.exe".to_string()],
+        },
+    ])
 }
 
-/// Устанавливает Chromium: ПРЯМАЯ ЗАГРУЗКА zip (без npx/playwright CLI!)
+fn get_fallback_chromium_urls(version: &str) -> Vec<String> {
+    vec![
+        format!("https://cdn.playwright.dev/builds/cft/{}/win64/chrome-win64.zip", version),
+        format!("https://storage.googleapis.com/chrome-for-testing-public/{}/win64/chrome-win64.zip", version),
+    ]
+}
+
+fn get_fallback_headless_urls(version: &str) -> Vec<String> {
+    vec![
+        format!("https://cdn.playwright.dev/builds/cft/{}/win64/chrome-headless-shell-win64.zip", version),
+        format!("https://storage.googleapis.com/chrome-for-testing-public/{}/win64/chrome-headless-shell-win64.zip", version),
+    ]
+}
+
+/// Устанавливает ВСЕ компоненты Chromium: прямая загрузка zip (без npx/playwright CLI!)
 #[tauri::command]
 async fn install_playwright_browsers_cmd() -> Result<String, String> {
     use std::io::Write;
     use futures_util::StreamExt;
     
-    println!("[BROWSERS] ========= Установка Chromium (прямая загрузка) =========");
+    println!("[BROWSERS] ========= Установка компонентов (прямая загрузка) =========");
     
-    // Получаем путь к playwright-cache (в %LOCALAPPDATA%, не в Program Files!)
+    // Получаем путь к playwright-cache
     let cache_dir = get_playwright_cache_dir()?;
     println!("[BROWSERS] Кеш: {}", cache_dir.display());
-    
-    // Проверяем — может Chromium уже есть
-    if cache_dir.exists() {
-        let has_chromium = std::fs::read_dir(&cache_dir)
-            .ok()
-            .map(|entries| entries.filter_map(|e| e.ok())
-                .any(|e| e.file_name().to_string_lossy().starts_with("chromium-") && e.path().is_dir()))
-            .unwrap_or(false);
-        
-        if has_chromium {
-            println!("[BROWSERS] Chromium уже установлен");
-            return Ok("Chromium браузер уже установлен!".to_string());
-        }
-    }
-    
-    // Читаем информацию о Chromium (из chromium-info.json или hardcoded)
-    let info = get_chromium_info()?;
-    println!("[BROWSERS] Revision: {}, Version: {}", info.revision, info.browser_version);
-    println!("[BROWSERS] CDN зеркал: {}", info.download_urls.len());
     
     // Создаём директорию кеша
     if !cache_dir.exists() {
@@ -897,141 +948,174 @@ async fn install_playwright_browsers_cmd() -> Result<String, String> {
         println!("[BROWSERS] Создана директория: {}", cache_dir.display());
     }
     
-    // Скачиваем zip во временный файл
-    let temp_dir = std::env::temp_dir();
-    let zip_path = temp_dir.join("aezakmi-chromium.zip");
-    
-    // Удаляем старый zip если есть
-    let _ = std::fs::remove_file(&zip_path);
+    // Читаем список компонентов
+    let components = get_browser_components()?;
+    println!("[BROWSERS] Компонентов для установки: {}", components.len());
     
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(600)) // 10 минут на скачивание
         .build()
         .map_err(|e| format!("Ошибка HTTP клиента: {}", e))?;
     
-    let mut download_ok = false;
-    let mut last_error = String::new();
+    let mut installed_count = 0;
+    let mut skipped_count = 0;
     
-    for url in &info.download_urls {
-        println!("[BROWSERS] Скачивание: {}", url);
+    for comp in &components {
+        let dest_dir = cache_dir.join(&comp.dir_name);
         
-        let response = match client.get(url).send().await {
-            Ok(r) => r,
-            Err(e) => {
-                last_error = format!("{}: {}", url, e);
-                println!("[BROWSERS] Ошибка: {}", last_error);
+        // Проверяем — может компонент уже установлен
+        if dest_dir.exists() && !comp.executable_check.is_empty() {
+            let mut exe_path = dest_dir.clone();
+            for part in &comp.executable_check {
+                exe_path = exe_path.join(part);
+            }
+            if exe_path.exists() {
+                println!("[BROWSERS] ✓ {} уже установлен: {}", comp.name, exe_path.display());
+                skipped_count += 1;
                 continue;
             }
-        };
-        
-        if !response.status().is_success() {
-            last_error = format!("HTTP {} от {}", response.status(), url);
-            println!("[BROWSERS] {}", last_error);
-            continue;
+            // Директория есть, но exe нет — удаляем и скачиваем заново
+            println!("[BROWSERS] Директория {} есть, но exe нет — переустановка", comp.dir_name);
+            let _ = std::fs::remove_dir_all(&dest_dir);
         }
         
-        let total_size = response.content_length().unwrap_or(0);
-        println!("[BROWSERS] Размер: {:.1} MB", total_size as f64 / 1048576.0);
+        println!("[BROWSERS] --- Установка: {} ---", comp.name);
         
-        let mut file = match std::fs::File::create(&zip_path) {
-            Ok(f) => f,
-            Err(e) => {
-                last_error = format!("Ошибка создания файла: {}", e);
+        // Скачиваем zip во временный файл
+        let temp_dir = std::env::temp_dir();
+        let zip_filename = format!("aezakmi-{}.zip", comp.name.replace("-", "_"));
+        let zip_path = temp_dir.join(&zip_filename);
+        let _ = std::fs::remove_file(&zip_path);
+        
+        let mut download_ok = false;
+        let mut last_error = String::new();
+        
+        for url in &comp.download_urls {
+            println!("[BROWSERS] Скачивание: {}", url);
+            
+            let response = match client.get(url).send().await {
+                Ok(r) => r,
+                Err(e) => {
+                    last_error = format!("{}: {}", url, e);
+                    println!("[BROWSERS] Ошибка: {}", last_error);
+                    continue;
+                }
+            };
+            
+            if !response.status().is_success() {
+                last_error = format!("HTTP {} от {}", response.status(), url);
+                println!("[BROWSERS] {}", last_error);
                 continue;
             }
-        };
-        
-        let mut stream = response.bytes_stream();
-        let mut downloaded: u64 = 0;
-        let mut write_error = false;
-        
-        while let Some(chunk_result) = stream.next().await {
-            match chunk_result {
-                Ok(data) => {
-                    if let Err(e) = file.write_all(&data) {
-                        last_error = format!("Ошибка записи: {}", e);
+            
+            let total_size = response.content_length().unwrap_or(0);
+            println!("[BROWSERS] Размер: {:.1} MB", total_size as f64 / 1048576.0);
+            
+            let mut file = match std::fs::File::create(&zip_path) {
+                Ok(f) => f,
+                Err(e) => {
+                    last_error = format!("Ошибка создания файла: {}", e);
+                    continue;
+                }
+            };
+            
+            let mut stream = response.bytes_stream();
+            let mut downloaded: u64 = 0;
+            let mut write_error = false;
+            
+            while let Some(chunk_result) = stream.next().await {
+                match chunk_result {
+                    Ok(data) => {
+                        if let Err(e) = file.write_all(&data) {
+                            last_error = format!("Ошибка записи: {}", e);
+                            write_error = true;
+                            break;
+                        }
+                        downloaded += data.len() as u64;
+                        if total_size > 0 && downloaded % (20 * 1024 * 1024) < data.len() as u64 {
+                            println!("[BROWSERS] {}: {:.1} / {:.1} MB ({:.0}%)",
+                                comp.name,
+                                downloaded as f64 / 1048576.0,
+                                total_size as f64 / 1048576.0,
+                                downloaded as f64 / total_size as f64 * 100.0);
+                        }
+                    }
+                    Err(e) => {
+                        last_error = format!("Ошибка загрузки: {}", e);
                         write_error = true;
                         break;
                     }
-                    downloaded += data.len() as u64;
-                    // Логируем каждые ~20 MB
-                    if total_size > 0 && downloaded % (20 * 1024 * 1024) < data.len() as u64 {
-                        println!("[BROWSERS] Скачано: {:.1} / {:.1} MB ({:.0}%)",
-                            downloaded as f64 / 1048576.0,
-                            total_size as f64 / 1048576.0,
-                            downloaded as f64 / total_size as f64 * 100.0);
-                    }
                 }
-                Err(e) => {
-                    last_error = format!("Ошибка загрузки: {}", e);
-                    write_error = true;
-                    break;
-                }
+            }
+            
+            drop(file);
+            
+            if !write_error {
+                println!("[BROWSERS] ✅ {} скачано: {:.1} MB", comp.name, downloaded as f64 / 1048576.0);
+                download_ok = true;
+                break;
             }
         }
         
-        drop(file);
-        
-        if !write_error {
-            println!("[BROWSERS] ✅ Скачано: {:.1} MB", downloaded as f64 / 1048576.0);
-            download_ok = true;
-            break;
+        if !download_ok {
+            let _ = std::fs::remove_file(&zip_path);
+            return Err(format!("Не удалось скачать {}. Проверьте интернет. Детали: {}", comp.name, last_error));
         }
-    }
-    
-    if !download_ok {
-        let _ = std::fs::remove_file(&zip_path);
-        return Err(format!("Не удалось скачать Chromium. Проверьте интернет-соединение. Детали: {}", last_error));
-    }
-    
-    // Создаём директорию chromium-{revision}/
-    let dest_dir = cache_dir.join(format!("chromium-{}", info.revision));
-    if dest_dir.exists() {
-        let _ = std::fs::remove_dir_all(&dest_dir);
-    }
-    std::fs::create_dir_all(&dest_dir)
-        .map_err(|e| format!("Не удалось создать {}: {}", dest_dir.display(), e))?;
-    
-    println!("[BROWSERS] Распаковка в: {}", dest_dir.display());
-    
-    // Распаковываем через PowerShell (надёжно на Windows 10+)
-    let ps_script = format!(
-        "Expand-Archive -Path '{}' -DestinationPath '{}' -Force",
-        zip_path.display(),
-        dest_dir.display()
-    );
-    
-    let extract = std::process::Command::new("powershell")
-        .args(["-NoProfile", "-NonInteractive", "-Command", &ps_script])
-        .output()
-        .map_err(|e| format!("Ошибка запуска PowerShell: {}", e))?;
-    
-    // Удаляем zip
-    let _ = std::fs::remove_file(&zip_path);
-    
-    if !extract.status.success() {
-        let stderr = String::from_utf8_lossy(&extract.stderr);
-        let _ = std::fs::remove_dir_all(&dest_dir);
-        return Err(format!("Ошибка распаковки Chromium: {}", stderr.trim()));
-    }
-    
-    // Проверяем что chrome.exe существует
-    let chrome_exe = dest_dir.join("chrome-win64").join("chrome.exe");
-    if chrome_exe.exists() {
-        println!("[BROWSERS] ✅ Chromium установлен: {}", chrome_exe.display());
-        Ok("Chromium браузер установлен!".to_string())
-    } else {
-        // Диагностика: показываем что на самом деле в архиве
-        let contents: Vec<String> = std::fs::read_dir(&dest_dir)
-            .ok()
-            .map(|entries| entries.filter_map(|e| e.ok())
-                .map(|e| e.file_name().to_string_lossy().to_string())
-                .collect())
-            .unwrap_or_default();
         
-        let _ = std::fs::remove_dir_all(&dest_dir);
-        Err(format!("chrome.exe не найден после распаковки. Содержимое: {:?}", contents))
+        // Создаём директорию компонента
+        if dest_dir.exists() {
+            let _ = std::fs::remove_dir_all(&dest_dir);
+        }
+        std::fs::create_dir_all(&dest_dir)
+            .map_err(|e| format!("Не удалось создать {}: {}", dest_dir.display(), e))?;
+        
+        println!("[BROWSERS] Распаковка {} в: {}", comp.name, dest_dir.display());
+        
+        // Распаковываем через PowerShell
+        let ps_script = format!(
+            "Expand-Archive -Path '{}' -DestinationPath '{}' -Force",
+            zip_path.display(),
+            dest_dir.display()
+        );
+        
+        let extract = std::process::Command::new("powershell")
+            .args(["-NoProfile", "-NonInteractive", "-Command", &ps_script])
+            .output()
+            .map_err(|e| format!("Ошибка запуска PowerShell: {}", e))?;
+        
+        let _ = std::fs::remove_file(&zip_path);
+        
+        if !extract.status.success() {
+            let stderr = String::from_utf8_lossy(&extract.stderr);
+            let _ = std::fs::remove_dir_all(&dest_dir);
+            return Err(format!("Ошибка распаковки {}: {}", comp.name, stderr.trim()));
+        }
+        
+        // Проверяем executable
+        if !comp.executable_check.is_empty() {
+            let mut exe_path = dest_dir.clone();
+            for part in &comp.executable_check {
+                exe_path = exe_path.join(part);
+            }
+            if exe_path.exists() {
+                println!("[BROWSERS] ✅ {} установлен: {}", comp.name, exe_path.display());
+            } else {
+                let contents: Vec<String> = std::fs::read_dir(&dest_dir).ok()
+                    .map(|entries| entries.filter_map(|e| e.ok())
+                        .map(|e| e.file_name().to_string_lossy().to_string())
+                        .collect())
+                    .unwrap_or_default();
+                let _ = std::fs::remove_dir_all(&dest_dir);
+                return Err(format!("Executable для {} не найден после распаковки. Содержимое: {:?}", comp.name, contents));
+            }
+        }
+        
+        installed_count += 1;
     }
+    
+    let msg = format!("Установлено: {}, пропущено (уже есть): {}", installed_count, skipped_count);
+    println!("[BROWSERS] ✅ {}", msg);
+    Ok(format!("Браузерные компоненты установлены! {}", msg))
 }
 
 /// Проверяет установлен ли Playwright (наличие пакета)
