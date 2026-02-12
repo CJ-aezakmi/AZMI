@@ -53,22 +53,24 @@ const SetupWizard = ({ onSetupComplete }: SetupWizardProps) => {
                     setStatusMessage('Chromium установлен! Запуск...');
                 } catch (installErr: any) {
                     console.error('Browser install error:', installErr);
+                    const errMsg = typeof installErr === 'string' ? installErr : (installErr?.message || 'Ошибка установки браузера');
                     // Если первая попытка не удалась — retry
                     if (retryCount < 2) {
                         setRetryCount(prev => prev + 1);
                         setStatusMessage(`Повторная попытка загрузки (${retryCount + 1}/3)...`);
-                        await new Promise(r => setTimeout(r, 2000));
+                        await new Promise(r => setTimeout(r, 3000));
                         try {
                             await invoke<string>('install_playwright_browsers_cmd');
                             setProgress(95);
                         } catch (retryErr: any) {
+                            const retryErrMsg = typeof retryErr === 'string' ? retryErr : (retryErr?.message || 'Ошибка установки браузера');
                             setStep('error');
-                            setErrorMessage(retryErr?.message || 'Ошибка установки браузера. Проверьте интернет-соединение.');
+                            setErrorMessage(retryErrMsg);
                             return;
                         }
                     } else {
                         setStep('error');
-                        setErrorMessage(installErr?.message || 'Ошибка установки браузера');
+                        setErrorMessage(errMsg);
                         return;
                     }
                 }
@@ -222,7 +224,7 @@ const SetupWizard = ({ onSetupComplete }: SetupWizardProps) => {
 
                 {/* Footer */}
                 <p className="text-gray-600 text-xs text-center mt-6">
-                    v2.2.0 &copy; AEZAKMI Team
+                    v2.2.2 &copy; AEZAKMI Team
                 </p>
             </div>
         </div>

@@ -1,6 +1,6 @@
 {
   "productName": "AEZAKMI",
-  "version": "2.2.1",
+  "version": "2.2.2",
   "identifier": "com.aezakmi.antidetect",
   "build": {
     "beforeDevCommand": "pnpm dev",
@@ -50,7 +50,7 @@
       "timestampUrl": "",
       "nsis": {
         "installerIcon": "icons/icon.ico",
-        "installMode": "perMachine",
+        "installMode": "both",
         "languages": [
           "English",
           "Russian"
