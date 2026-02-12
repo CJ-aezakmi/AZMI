@@ -2,10 +2,10 @@
 // ============================================================
 // AEZAKMI Pro — prepare-bundle.cjs
 // Подготавливает ресурсы для Tauri NSIS сборки:
-//   1. Скачивает portable Node.js → src-tauri/node/
+//   1. Скачивает ТОЛЬКО node.exe → src-tauri/node/
 //   2. Устанавливает Playwright пакет (БЕЗ браузеров) → src-tauri/playwright/
+//      ВАЖНО: node_modules переименовывается в modules (Tauri исключает node_modules!)
 //   3. Копирует скрипты → src-tauri/scripts/
-// Результат используется в tauri.conf.json → bundle.resources
 // ============================================================
 
 const fs = require('fs');
@@ -15,7 +15,6 @@ const { execSync } = require('child_process');
 const PROJECT_ROOT = path.join(__dirname, '..');
 const SRC_TAURI = path.join(PROJECT_ROOT, 'src-tauri');
 
-// Ресурсы кладём ВНУТРЬ src-tauri/ для Tauri bundling
 const NODE_DIR = path.join(SRC_TAURI, 'node');
 const SCRIPTS_DIR = path.join(SRC_TAURI, 'scripts');
 const PLAYWRIGHT_DIR = path.join(SRC_TAURI, 'playwright');
@@ -26,9 +25,10 @@ console.log('🚀 Подготовка ресурсов для Tauri сборк�
 console.log(`   Выход: ${SRC_TAURI}`);
 
 // ============================================================
-// Шаг 1: Portable Node.js
+// Шаг 1: ТОЛЬКО node.exe из portable Node.js
+// npm/npx/corepack/node_modules НЕ нужны — экономим ~30MB
 // ============================================================
-console.log('\n📦 Шаг 1: Node.js portable v' + NODE_VERSION + '...');
+console.log('\n📦 Шаг 1: node.exe v' + NODE_VERSION + '...');
 
 if (!fs.existsSync(NODE_DIR)) {
   fs.mkdirSync(NODE_DIR, { recursive: true });
@@ -55,34 +55,47 @@ if (!fs.existsSync(path.join(NODE_DIR, 'node.exe'))) {
       { stdio: 'inherit', timeout: 120000 }
     );
 
+    // Копируем ТОЛЬКО node.exe
     const extractedDir = path.join(extractTmp, `node-v${NODE_VERSION}-win-x64`);
-    if (fs.existsSync(extractedDir)) {
-      for (const file of fs.readdirSync(extractedDir)) {
-        const src = path.join(extractedDir, file);
-        const dest = path.join(NODE_DIR, file);
-        if (fs.existsSync(dest)) {
-          fs.rmSync(dest, { recursive: true, force: true });
-        }
-        fs.renameSync(src, dest);
-      }
+    const srcExe = path.join(extractedDir, 'node.exe');
+    const destExe = path.join(NODE_DIR, 'node.exe');
+    if (fs.existsSync(srcExe)) {
+      fs.copyFileSync(srcExe, destExe);
+      console.log('   ✅ node.exe скопирован');
+    } else {
+      throw new Error('node.exe не найден в архиве');
     }
 
-    // Cleanup
+    // Также копируем npm.cmd и npx.cmd + node_modules/npm для prepare-bundle
+    // (нужны ТОЛЬКО для npm install playwright, потом удалим)
+    const npmCmd = path.join(extractedDir, 'npm.cmd');
+    const npxCmd = path.join(extractedDir, 'npx.cmd');
+    const nodeModules = path.join(extractedDir, 'node_modules');
+    if (fs.existsSync(npmCmd)) fs.copyFileSync(npmCmd, path.join(NODE_DIR, 'npm.cmd'));
+    if (fs.existsSync(npxCmd)) fs.copyFileSync(npxCmd, path.join(NODE_DIR, 'npx.cmd'));
+    if (fs.existsSync(nodeModules)) {
+      // Копируем рекурсивно node_modules для npm install
+      execSync(`xcopy "${nodeModules}" "${path.join(NODE_DIR, 'node_modules')}" /E /I /Q /Y`, {
+        stdio: 'pipe', timeout: 60000
+      });
+    }
+
+    // Cleanup zip и tmp
     if (fs.existsSync(nodeZipPath)) fs.unlinkSync(nodeZipPath);
     if (fs.existsSync(extractTmp)) fs.rmSync(extractTmp, { recursive: true, force: true });
 
-    console.log('   ✅ Node.js готов');
+    console.log('   ✅ Node.js распакован (полный, нужен для npm install)');
   } catch (error) {
     console.error('   ❌ Ошибка загрузки Node.js:', error.message);
     process.exit(1);
   }
 } else {
-  console.log('   ✅ Node.js уже скачан');
+  console.log('   ✅ node.exe уже есть');
 }
 
 // ============================================================
 // Шаг 2: Playwright пакет (БЕЗ скачивания браузеров!)
-// Браузеры загрузятся при первом запуске приложения
+// ВАЖНО: после установки node_modules → modules (Tauri исключает node_modules!)
 // ============================================================
 console.log('\n📦 Шаг 2: Playwright пакет (без браузеров)...');
 
@@ -100,14 +113,23 @@ fs.writeFileSync(playwrightPkg, JSON.stringify({
   }
 }, null, 2));
 
-const playwrightNodeModules = path.join(PLAYWRIGHT_DIR, 'node_modules', 'playwright-core');
-if (!fs.existsSync(playwrightNodeModules)) {
+// Проверяем modules/ (финальное имя) или node_modules/ (до rename)
+const modulesDir = path.join(PLAYWRIGHT_DIR, 'modules');
+const nodeModulesDir = path.join(PLAYWRIGHT_DIR, 'node_modules');
+const playwrightCoreCheck = path.join(modulesDir, 'playwright-core');
+
+if (!fs.existsSync(playwrightCoreCheck)) {
   try {
     const npmExe = path.join(NODE_DIR, 'npm.cmd');
     const nodeExe = path.join(NODE_DIR, 'node.exe');
 
     if (!fs.existsSync(npmExe) || !fs.existsSync(nodeExe)) {
-      throw new Error('Node.js не найден в ' + NODE_DIR);
+      throw new Error('npm.cmd не найден в ' + NODE_DIR);
+    }
+
+    // Удаляем старые node_modules если есть
+    if (fs.existsSync(nodeModulesDir)) {
+      fs.rmSync(nodeModulesDir, { recursive: true, force: true });
     }
 
     console.log('   Установка playwright пакета...');
@@ -122,8 +144,8 @@ if (!fs.existsSync(playwrightNodeModules)) {
       timeout: 120000
     });
 
-    // Удаляем браузерные бинарники если они случайно попали
-    const pwPkgDir = path.join(PLAYWRIGHT_DIR, 'node_modules', 'playwright');
+    // Удаляем браузерные бинарники если попали
+    const pwPkgDir = path.join(nodeModulesDir, 'playwright');
     if (fs.existsSync(pwPkgDir)) {
       for (const item of fs.readdirSync(pwPkgDir)) {
         if (item.match(/^(chromium|firefox|webkit|ffmpeg|winldd|\.links)/)) {
@@ -134,7 +156,17 @@ if (!fs.existsSync(playwrightNodeModules)) {
       }
     }
 
-    console.log('   ✅ Playwright пакет установлен (без браузеров)');
+    // *** КЛЮЧЕВОЙ ШАГ: Переименовываем node_modules → modules ***
+    // Tauri resources НЕ включает папки с именем node_modules!
+    if (fs.existsSync(nodeModulesDir)) {
+      if (fs.existsSync(modulesDir)) {
+        fs.rmSync(modulesDir, { recursive: true, force: true });
+      }
+      fs.renameSync(nodeModulesDir, modulesDir);
+      console.log('   ✅ node_modules → modules (обход ограничения Tauri)');
+    }
+
+    console.log('   ✅ Playwright пакет готов');
   } catch (error) {
     console.error('   ❌ Ошибка установки Playwright:', error.message);
     process.exit(1);
@@ -144,9 +176,25 @@ if (!fs.existsSync(playwrightNodeModules)) {
 }
 
 // ============================================================
-// Шаг 3: Копируем скрипты
+// Шаг 3: Убираем npm/npx/node_modules из node/ — они больше не нужны
+// В установщик попадёт ТОЛЬКО node.exe (~70 MB)
 // ============================================================
-console.log('\n📦 Шаг 3: Скрипты...');
+console.log('\n📦 Шаг 3: Очистка node/ (оставляем только node.exe)...');
+const nodeDir = NODE_DIR;
+if (fs.existsSync(nodeDir)) {
+  for (const item of fs.readdirSync(nodeDir)) {
+    if (item === 'node.exe') continue; // Оставляем
+    const itemPath = path.join(nodeDir, item);
+    fs.rmSync(itemPath, { recursive: true, force: true });
+    console.log(`   Удалено: ${item}`);
+  }
+}
+console.log('   ✅ Оставлен только node.exe');
+
+// ============================================================
+// Шаг 4: Копируем скрипты
+// ============================================================
+console.log('\n📦 Шаг 4: Скрипты...');
 
 if (!fs.existsSync(SCRIPTS_DIR)) {
   fs.mkdirSync(SCRIPTS_DIR, { recursive: true });
@@ -164,16 +212,36 @@ if (fs.existsSync(launchScript)) {
 }
 
 // ============================================================
-// Шаг 4: Итоги
+// Шаг 5: Проверка и итоги
 // ============================================================
+
+// Проверяем критичные файлы
+const criticalFiles = [
+  path.join(NODE_DIR, 'node.exe'),
+  path.join(PLAYWRIGHT_DIR, 'modules', 'playwright-core', 'cli.js'),
+  path.join(SCRIPTS_DIR, 'launch_playwright.cjs'),
+];
+console.log('\n🔍 Проверка критичных файлов:');
+for (const f of criticalFiles) {
+  const exists = fs.existsSync(f);
+  const rel = path.relative(SRC_TAURI, f);
+  console.log(`   ${exists ? '✅' : '❌'} ${rel}`);
+  if (!exists) {
+    console.error(`КРИТИЧЕСКАЯ ОШИБКА: ${f} не найден!`);
+    process.exit(1);
+  }
+}
+
 function getDirSize(dirPath) {
   if (!fs.existsSync(dirPath)) return 0;
   let size = 0;
-  for (const file of fs.readdirSync(dirPath)) {
-    const filePath = path.join(dirPath, file);
-    const stats = fs.statSync(filePath);
-    size += stats.isDirectory() ? getDirSize(filePath) : stats.size;
-  }
+  try {
+    for (const file of fs.readdirSync(dirPath)) {
+      const filePath = path.join(dirPath, file);
+      const stats = fs.statSync(filePath);
+      size += stats.isDirectory() ? getDirSize(filePath) : stats.size;
+    }
+  } catch (e) {}
   return size;
 }
 
@@ -182,7 +250,7 @@ const pwMB = (getDirSize(PLAYWRIGHT_DIR) / (1024 * 1024)).toFixed(1);
 const scriptsMB = (getDirSize(SCRIPTS_DIR) / (1024 * 1024)).toFixed(2);
 
 console.log('\n📊 Размеры ресурсов:');
-console.log(`   Node.js:    ${nodeMB} MB`);
+console.log(`   node.exe:   ${nodeMB} MB`);
 console.log(`   Playwright: ${pwMB} MB`);
 console.log(`   Scripts:    ${scriptsMB} MB`);
 console.log(`   ИТОГО:      ${(parseFloat(nodeMB) + parseFloat(pwMB) + parseFloat(scriptsMB)).toFixed(1)} MB`);

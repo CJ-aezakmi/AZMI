@@ -1,4 +1,4 @@
-// src-tauri/src/lib.rs — AEZAKMI Pro v2.2.2
+// src-tauri/src/lib.rs — AEZAKMI Pro v2.2.3
 
 use base64::Engine;
 use tauri::Manager;
@@ -163,13 +163,21 @@ fn get_enhanced_path() -> String {
 }
 
 /// Получает путь к NODE_PATH (для require('playwright'))
+/// Production: playwright/modules (Tauri исключает node_modules!)
+/// Dev: playwright/node_modules
 fn get_node_path() -> String {
     let mut paths = Vec::new();
     
     if let Ok(app_dir) = get_app_dir() {
-        let pw_modules = app_dir.join("playwright").join("node_modules");
+        // Production: modules (переименовано из node_modules)
+        let pw_modules = app_dir.join("playwright").join("modules");
         if pw_modules.exists() {
             paths.push(pw_modules.display().to_string());
+        }
+        // Fallback: node_modules (если не переименовано)
+        let pw_nm = app_dir.join("playwright").join("node_modules");
+        if pw_nm.exists() {
+            paths.push(pw_nm.display().to_string());
         }
     }
     
@@ -860,6 +868,10 @@ async fn install_playwright_browsers_cmd() -> Result<String, String> {
     let cli_candidates: Vec<std::path::PathBuf> = {
         let mut paths = Vec::new();
         if let Some(ref ad) = app_dir {
+            // Production: modules/ (переименовано из node_modules)
+            paths.push(ad.join("playwright").join("modules").join("playwright-core").join("cli.js"));
+            paths.push(ad.join("playwright").join("modules").join("playwright").join("cli.js"));
+            // Fallback: node_modules/ (на случай если не переименовано)
             paths.push(ad.join("playwright").join("node_modules").join("playwright-core").join("cli.js"));
             paths.push(ad.join("playwright").join("node_modules").join("playwright").join("cli.js"));
         }
@@ -929,8 +941,15 @@ async fn install_playwright_browsers_cmd() -> Result<String, String> {
         
         if let Some(ref pw_cwd) = pw_dir {
             cmd.current_dir(pw_cwd);
-            // NODE_PATH чтобы npx нашёл playwright
-            cmd.env("NODE_PATH", pw_cwd.join("node_modules").display().to_string());
+            // NODE_PATH: ищем modules (prod) или node_modules (dev)
+            let modules_path = pw_cwd.join("modules");
+            let nm_path = pw_cwd.join("node_modules");
+            let node_path = if modules_path.exists() {
+                modules_path.display().to_string()
+            } else {
+                nm_path.display().to_string()
+            };
+            cmd.env("NODE_PATH", &node_path);
         }
         
         let output = cmd.output();
@@ -967,9 +986,16 @@ async fn install_playwright_browsers_cmd() -> Result<String, String> {
 async fn check_playwright_installed(_app: tauri::AppHandle) -> Result<bool, String> {
     // Проверяем наличие playwright пакета в bundled или через npx
     if let Ok(app_dir) = get_app_dir() {
-        let pw_check = app_dir.join("playwright").join("node_modules").join("playwright-core");
+        // Production: modules/ (переименовано из node_modules)
+        let pw_check = app_dir.join("playwright").join("modules").join("playwright-core");
         if pw_check.exists() {
-            println!("[CHECK] Playwright пакет найден (bundled)");
+            println!("[CHECK] Playwright пакет найден (bundled/modules)");
+            return Ok(true);
+        }
+        // Fallback: node_modules/
+        let pw_check2 = app_dir.join("playwright").join("node_modules").join("playwright-core");
+        if pw_check2.exists() {
+            println!("[CHECK] Playwright пакет найден (bundled/node_modules)");
             return Ok(true);
         }
     }
@@ -1117,12 +1143,18 @@ async fn stop_cookie_bot(profile_id: String) -> Result<String, String> {
 async fn get_playwright_version(_app: tauri::AppHandle) -> Result<String, String> {
     // Пробуем прочитать версию из bundled пакета
     if let Ok(app_dir) = get_app_dir() {
-        let pkg_json = app_dir.join("playwright").join("node_modules").join("playwright").join("package.json");
-        if pkg_json.exists() {
-            if let Ok(content) = std::fs::read_to_string(&pkg_json) {
-                if let Ok(json) = serde_json::from_str::<serde_json::Value>(&content) {
-                    if let Some(version) = json.get("version").and_then(|v| v.as_str()) {
-                        return Ok(format!("Version {}", version));
+        // Production: modules/
+        let pkg_json = app_dir.join("playwright").join("modules").join("playwright").join("package.json");
+        // Fallback: node_modules/
+        let pkg_json2 = app_dir.join("playwright").join("node_modules").join("playwright").join("package.json");
+        
+        for pj in &[pkg_json, pkg_json2] {
+            if pj.exists() {
+                if let Ok(content) = std::fs::read_to_string(pj) {
+                    if let Ok(json) = serde_json::from_str::<serde_json::Value>(&content) {
+                        if let Some(version) = json.get("version").and_then(|v| v.as_str()) {
+                            return Ok(format!("Version {}", version));
+                        }
                     }
                 }
             }

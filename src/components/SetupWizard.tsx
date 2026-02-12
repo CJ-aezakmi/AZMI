@@ -224,7 +224,7 @@ const SetupWizard = ({ onSetupComplete }: SetupWizardProps) => {
 
                 {/* Footer */}
                 <p className="text-gray-600 text-xs text-center mt-6">
-                    v2.2.2 &copy; AEZAKMI Team
+                    v2.2.3 &copy; AEZAKMI Team
                 </p>
             </div>
         </div>
