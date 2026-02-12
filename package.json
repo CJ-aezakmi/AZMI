@@ -1,6 +1,6 @@
 {
   "name": "aezakmi-antidetect-web",
-  "version": "2.1.0",
+  "version": "2.2.0",
   "description": "AEZAKMI Antidetect Browser Pro - Web Application with Advanced Fingerprinting Protection",
   "type": "module",
   "scripts": {

@@ -2,7 +2,6 @@ name: Build & Release (Windows)
 
 on:
   push:
-    branches: [main]
     tags: ['v*']
   workflow_dispatch:
 
@@ -10,7 +9,7 @@ permissions:
   contents: write
 
 env:
-  APP_VERSION: '2.1.0'
+  APP_VERSION: '2.2.0'
 
 jobs:
   build-windows:
@@ -42,6 +41,9 @@ jobs:
       - name: Install frontend dependencies
         run: pnpm install --no-frozen-lockfile
 
+      - name: Prepare bundled resources (Node.js + Playwright)
+        run: node scripts/prepare-bundle.cjs
+
       - name: Build web assets
         run: pnpm build
 
@@ -55,20 +57,29 @@ jobs:
           releaseBody: |
             # AEZAKMI Pro v${{ env.APP_VERSION }}
 
+            ## Что нового
+
+            - ✅ Node.js теперь **встроен** в установщик (не нужно устанавливать отдельно!)
+            - ✅ Chromium браузер **автоматически** загружается при первом запуске
+            - ✅ Только Chromium — удалены Firefox/Camoufox/WebKit
+            - ✅ Импорт куки (JSON/TXT) в профили
+            - ✅ Исправлены пути к ресурсам (логотипы, скрипты)
+            - ✅ Исправлена кнопка удаления профиля
+
             ## Установка
 
             1. Скачайте **AEZAKMI_${{ env.APP_VERSION }}_x64-setup.exe**
             2. Запустите установщик
-            3. После установки запустите программу
-            4. При первом запуске программа предложит установить Node.js
-            5. Далее автоматически загрузятся необходимые браузеры
+            3. Запустите программу — Node.js уже встроен!
+            4. Chromium загрузится автоматически при первом запуске
+            5. Активируйте лицензионный ключ
 
             ## Системные требования
 
             - Windows 10/11 (64-bit)
             - 4 GB RAM (рекомендуется 8 GB)
-            - 2 GB свободного места
-            - Интернет-соединение
+            - 500 MB свободного места (+ 350 MB для Chromium)
+            - Интернет-соединение (для первой загрузки Chromium)
           releaseDraft: false
           prerelease: false
           includeUpdaterJson: false

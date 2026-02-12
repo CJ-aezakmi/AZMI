@@ -1,6 +1,6 @@
 {
   "productName": "AEZAKMI",
-  "version": "2.1.0",
+  "version": "2.2.0",
   "identifier": "com.aezakmi.antidetect",
   "build": {
     "beforeDevCommand": "pnpm dev",
@@ -39,7 +39,11 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ],
-    "resources": [],
+    "resources": {
+      "node/**/*": "node/",
+      "scripts/*": "scripts/",
+      "playwright/**/*": "playwright/"
+    },
     "windows": {
       "certificateThumbprint": null,
       "digestAlgorithm": "sha256",

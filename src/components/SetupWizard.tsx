@@ -4,7 +4,7 @@ import { Progress } from '@/components/ui/progress';
 import { Button } from '@/components/ui/button';
 import { CheckCircle, XCircle, Download, Loader2, ExternalLink } from 'lucide-react';
 
-type SetupStep = 'checking' | 'need-nodejs' | 'installing-nodejs' | 'installing-browsers' | 'ready' | 'error';
+type SetupStep = 'checking' | 'installing-browsers' | 'need-nodejs' | 'installing-nodejs' | 'ready' | 'error';
 
 interface SetupWizardProps {
     onSetupComplete: () => void;
@@ -15,6 +15,7 @@ const SetupWizard = ({ onSetupComplete }: SetupWizardProps) => {
     const [progress, setProgress] = useState(0);
     const [statusMessage, setStatusMessage] = useState('Проверка компонентов...');
     const [errorMessage, setErrorMessage] = useState('');
+    const [retryCount, setRetryCount] = useState(0);
 
     const checkComponents = useCallback(async () => {
         setStep('checking');
@@ -22,33 +23,62 @@ const SetupWizard = ({ onSetupComplete }: SetupWizardProps) => {
         setStatusMessage('Проверка Node.js...');
 
         try {
+            // Шаг 1: Проверяем Node.js (bundled идёт в комплекте!)
             const nodeInstalled = await invoke<boolean>('check_node_installed');
             setProgress(30);
 
             if (!nodeInstalled) {
+                // Bundled node не найден — предлагаем установить системный
                 setStep('need-nodejs');
-                setStatusMessage('Требуется установка Node.js');
+                setStatusMessage('Node.js не найден в комплекте. Требуется установка.');
                 return;
             }
 
-            setStatusMessage('Проверка браузеров...');
+            setStatusMessage('Node.js найден ✓ Проверка браузера...');
             setProgress(50);
 
+            // Шаг 2: Проверяем Chromium
             const browsersInstalled = await invoke<boolean>('check_browsers_installed');
             setProgress(70);
 
             if (!browsersInstalled) {
+                // Автоматически устанавливаем Chromium!
                 setStep('installing-browsers');
-                setStatusMessage('Установка необходимых компонентов...');
-                await installBrowsers();
-                return;
+                setStatusMessage('Загрузка Chromium браузера... Это может занять 1-3 минуты.');
+                setProgress(75);
+                
+                try {
+                    await invoke<string>('install_playwright_browsers_cmd');
+                    setProgress(95);
+                    setStatusMessage('Chromium установлен! Запуск...');
+                } catch (installErr: any) {
+                    console.error('Browser install error:', installErr);
+                    // Если первая попытка не удалась — retry
+                    if (retryCount < 2) {
+                        setRetryCount(prev => prev + 1);
+                        setStatusMessage(`Повторная попытка загрузки (${retryCount + 1}/3)...`);
+                        await new Promise(r => setTimeout(r, 2000));
+                        try {
+                            await invoke<string>('install_playwright_browsers_cmd');
+                            setProgress(95);
+                        } catch (retryErr: any) {
+                            setStep('error');
+                            setErrorMessage(retryErr?.message || 'Ошибка установки браузера. Проверьте интернет-соединение.');
+                            return;
+                        }
+                    } else {
+                        setStep('error');
+                        setErrorMessage(installErr?.message || 'Ошибка установки браузера');
+                        return;
+                    }
+                }
             }
 
+            // Всё готово!
             setProgress(100);
             setStep('ready');
             setStatusMessage('Все компоненты готовы!');
 
-            // Сохраняем флаг и входим в приложение
             localStorage.setItem('aezakmi_setup_done', 'true');
             setTimeout(onSetupComplete, 800);
         } catch (err: any) {
@@ -56,7 +86,7 @@ const SetupWizard = ({ onSetupComplete }: SetupWizardProps) => {
             setStep('error');
             setErrorMessage(err?.message || 'Ошибка проверки компонентов');
         }
-    }, [onSetupComplete]);
+    }, [onSetupComplete, retryCount]);
 
     const handleInstallNodeJS = async () => {
         setStep('installing-nodejs');
@@ -64,40 +94,18 @@ const SetupWizard = ({ onSetupComplete }: SetupWizardProps) => {
         setProgress(20);
 
         try {
-            // Скачиваем и запускаем Node.js installer
             const result = await invoke<string>('download_and_run_nodejs_installer');
             setProgress(80);
             setStatusMessage(result || 'Node.js установлен! Проверяем компоненты...');
 
-            // Ждём завершения установки и перепроверяем
             await new Promise(resolve => setTimeout(resolve, 3000));
             setProgress(90);
 
-            // Перепроверяем всё
             await checkComponents();
         } catch (err: any) {
             console.error('Node.js install error:', err);
             setStep('error');
             setErrorMessage(err?.message || 'Ошибка установки Node.js. Установите вручную с https://nodejs.org');
-        }
-    };
-
-    const installBrowsers = async () => {
-        setStep('installing-browsers');
-        setStatusMessage('Установка Chromium браузера...');
-        setProgress(60);
-
-        try {
-            await invoke<string>('install_playwright_browsers_cmd');
-            setProgress(100);
-            setStep('ready');
-            setStatusMessage('Все компоненты установлены!');
-            localStorage.setItem('aezakmi_setup_done', 'true');
-            setTimeout(onSetupComplete, 800);
-        } catch (err: any) {
-            console.error('Browser install error:', err);
-            setStep('error');
-            setErrorMessage(err?.message || 'Ошибка установки браузера');
         }
     };
 
@@ -214,7 +222,7 @@ const SetupWizard = ({ onSetupComplete }: SetupWizardProps) => {
 
                 {/* Footer */}
                 <p className="text-gray-600 text-xs text-center mt-6">
-                    v2.1.0 &copy; AEZAKMI Team
+                    v2.2.0 &copy; AEZAKMI Team
                 </p>
             </div>
         </div>
