@@ -1,10 +1,10 @@
 {
   "productName": "AEZAKMI",
-  "version": "2.2.0",
+  "version": "2.2.1",
   "identifier": "com.aezakmi.antidetect",
   "build": {
     "beforeDevCommand": "pnpm dev",
-    "beforeBuildCommand": "pnpm build",
+    "beforeBuildCommand": "node scripts/prepare-bundle.cjs && pnpm build",
     "devUrl": "http://localhost:5173",
     "frontendDist": "../dist"
   },

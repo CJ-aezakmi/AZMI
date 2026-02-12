@@ -763,7 +763,6 @@ async fn download_and_run_nodejs_installer() -> Result<String, String> {
 /// Получает корректный путь к playwright-cache (в корне проекта)
 fn get_playwright_cache_dir() -> Result<std::path::PathBuf, String> {
     use std::env;
-    use std::path::PathBuf;
     
     let current_exe = env::current_exe()
         .map_err(|e| format!("Не удалось получить путь к exe: {}", e))?;
@@ -834,7 +833,7 @@ async fn install_playwright_browsers_cmd() -> Result<String, String> {
     let enhanced_path = get_enhanced_path();
     
     // Метод 1: Используем bundled npx playwright install chromium
-    let npx_result = match get_npx_cmd() {
+    let npx_result: Result<String, String> = match get_npx_cmd() {
         Ok(npx_path) => {
             println!("[BROWSERS] Используем npx: {}", npx_path.display());
             
