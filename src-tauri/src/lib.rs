@@ -1,4 +1,4 @@
-// src-tauri/src/lib.rs — AEZAKMI Pro v2.2.3
+// src-tauri/src/lib.rs — AEZAKMI Pro v2.2.4
 
 use base64::Engine;
 use tauri::Manager;
@@ -12,7 +12,7 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_shell::init())
         .setup(|app| {
-            println!("[STARTUP] AEZAKMI Pro v2.2.2");
+            println!("[STARTUP] AEZAKMI Pro v2.2.4");
             
             #[cfg(debug_assertions)]
             if let Some(window) = app.get_webview_window("main") {
@@ -94,44 +94,6 @@ fn get_node_exe() -> Result<std::path::PathBuf, String> {
     }
     
     Err("Node.js не найден! Ни bundled, ни системный.".to_string())
-}
-
-/// Находит путь к npx.cmd — сначала bundled, потом system
-fn get_npx_cmd() -> Result<std::path::PathBuf, String> {
-    // 1. Bundled npx рядом с exe
-    if let Ok(app_dir) = get_app_dir() {
-        let bundled = app_dir.join("node").join("npx.cmd");
-        if bundled.exists() {
-            println!("[NPX] Используем bundled: {}", bundled.display());
-            return Ok(bundled);
-        }
-    }
-    
-    // 2. Dev mode
-    if let Ok(exe) = std::env::current_exe() {
-        let mut dir = exe.as_path();
-        for _ in 0..6 {
-            if let Some(parent) = dir.parent() {
-                let dev_npx = parent.join("node").join("npx.cmd");
-                if dev_npx.exists() {
-                    println!("[NPX] Используем dev npx: {}", dev_npx.display());
-                    return Ok(dev_npx);
-                }
-                dir = parent;
-            }
-        }
-    }
-    
-    // 3. System npx
-    let check = std::process::Command::new("npx").arg("--version").output();
-    if let Ok(output) = check {
-        if output.status.success() {
-            println!("[NPX] Используем системный npx");
-            return Ok(std::path::PathBuf::from("npx"));
-        }
-    }
-    
-    Err("npx не найден! Ни bundled, ни системный.".to_string())
 }
 
 /// Получает PATH с добавленным bundled node/
@@ -822,20 +784,92 @@ fn get_playwright_cache_dir() -> Result<std::path::PathBuf, String> {
 }
 
 /// Устанавливает Chromium браузер через bundled playwright CLI
+/// Информация о Chromium для прямой загрузки (без npx/playwright CLI)
+struct ChromiumInfo {
+    revision: String,
+    browser_version: String,
+    download_urls: Vec<String>,
+}
+
+/// Читает chromium-info.json из ресурсов приложения.
+/// Файл генерируется prepare-bundle.cjs из browsers.json playwright-core.
+/// Fallback: захардкоженные значения для Playwright 1.50.x.
+fn get_chromium_info() -> Result<ChromiumInfo, String> {
+    let mut info_paths = Vec::new();
+    
+    if let Ok(app_dir) = get_app_dir() {
+        info_paths.push(app_dir.join("playwright").join("chromium-info.json"));
+    }
+    
+    // Dev mode: ищем в src-tauri/playwright/ и выше
+    if let Ok(exe) = std::env::current_exe() {
+        let mut dir = exe.as_path();
+        for _ in 0..6 {
+            if let Some(parent) = dir.parent() {
+                let p = parent.join("playwright").join("chromium-info.json");
+                if p.exists() && !info_paths.contains(&p) {
+                    info_paths.push(p);
+                }
+                let p2 = parent.join("src-tauri").join("playwright").join("chromium-info.json");
+                if p2.exists() && !info_paths.contains(&p2) {
+                    info_paths.push(p2);
+                }
+                dir = parent;
+            }
+        }
+    }
+    
+    for path in &info_paths {
+        if path.exists() {
+            println!("[CHROMIUM_INFO] Читаем: {}", path.display());
+            let content = std::fs::read_to_string(path)
+                .map_err(|e| format!("Ошибка чтения {}: {}", path.display(), e))?;
+            let json: serde_json::Value = serde_json::from_str(&content)
+                .map_err(|e| format!("Ошибка парсинга chromium-info.json: {}", e))?;
+            
+            let revision = json.get("revision").and_then(|v| v.as_str())
+                .ok_or("revision не найден в chromium-info.json")?.to_string();
+            let browser_version = json.get("browserVersion").and_then(|v| v.as_str())
+                .ok_or("browserVersion не найден в chromium-info.json")?.to_string();
+            let urls: Vec<String> = json.get("downloadUrls").and_then(|v| v.as_array())
+                .ok_or("downloadUrls не найден в chromium-info.json")?
+                .iter()
+                .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                .collect();
+            
+            if urls.is_empty() {
+                return Err("downloadUrls пустой в chromium-info.json".to_string());
+            }
+            
+            println!("[CHROMIUM_INFO] revision={}, version={}, urls={}", revision, browser_version, urls.len());
+            return Ok(ChromiumInfo { revision, browser_version, download_urls: urls });
+        }
+    }
+    
+    // Fallback: захардкоженные значения для Playwright 1.50.x
+    println!("[CHROMIUM_INFO] Файл не найден, используем встроенные значения");
+    Ok(ChromiumInfo {
+        revision: "1208".to_string(),
+        browser_version: "145.0.7632.6".to_string(),
+        download_urls: vec![
+            "https://cdn.playwright.dev/builds/cft/145.0.7632.6/win64/chrome-win64.zip".to_string(),
+            "https://playwright.download.prss.microsoft.com/dbazure/download/playwright/builds/cft/145.0.7632.6/win64/chrome-win64.zip".to_string(),
+            "https://storage.googleapis.com/chrome-for-testing-public/145.0.7632.6/win64/chrome-win64.zip".to_string(),
+        ],
+    })
+}
+
+/// Устанавливает Chromium: ПРЯМАЯ ЗАГРУЗКА zip (без npx/playwright CLI!)
 #[tauri::command]
 async fn install_playwright_browsers_cmd() -> Result<String, String> {
-    use std::process::Command;
+    use std::io::Write;
+    use futures_util::StreamExt;
     
-    println!("[BROWSERS] ========= Установка Chromium =========");
-    
-    // Проверяем Node.js (bundled или system)
-    let node_exe = get_node_exe()
-        .map_err(|_| "Node.js не найден. Переустановите приложение.".to_string())?;
-    println!("[BROWSERS] Node: {}", node_exe.display());
+    println!("[BROWSERS] ========= Установка Chromium (прямая загрузка) =========");
     
     // Получаем путь к playwright-cache (в %LOCALAPPDATA%, не в Program Files!)
     let cache_dir = get_playwright_cache_dir()?;
-    println!("[BROWSERS] Путь к кешу: {}", cache_dir.display());
+    println!("[BROWSERS] Кеш: {}", cache_dir.display());
     
     // Проверяем — может Chromium уже есть
     if cache_dir.exists() {
@@ -851,140 +885,159 @@ async fn install_playwright_browsers_cmd() -> Result<String, String> {
         }
     }
     
-    // Создаем директорию кеша
+    // Читаем информацию о Chromium (из chromium-info.json или hardcoded)
+    let info = get_chromium_info()?;
+    println!("[BROWSERS] Revision: {}, Version: {}", info.revision, info.browser_version);
+    println!("[BROWSERS] CDN зеркал: {}", info.download_urls.len());
+    
+    // Создаём директорию кеша
     if !cache_dir.exists() {
         std::fs::create_dir_all(&cache_dir)
             .map_err(|e| format!("Не удалось создать директорию кеша: {}", e))?;
         println!("[BROWSERS] Создана директория: {}", cache_dir.display());
     }
     
-    let enhanced_path = get_enhanced_path();
-    let mut all_errors: Vec<String> = Vec::new();
+    // Скачиваем zip во временный файл
+    let temp_dir = std::env::temp_dir();
+    let zip_path = temp_dir.join("aezakmi-chromium.zip");
     
-    // ========= Метод 1: node + playwright CLI напрямую (самый надёжный) =========
-    println!("[BROWSERS] Метод 1: прямой CLI скрипт...");
+    // Удаляем старый zip если есть
+    let _ = std::fs::remove_file(&zip_path);
     
-    let app_dir = get_app_dir().ok();
-    let cli_candidates: Vec<std::path::PathBuf> = {
-        let mut paths = Vec::new();
-        if let Some(ref ad) = app_dir {
-            // Production: modules/ (переименовано из node_modules)
-            paths.push(ad.join("playwright").join("modules").join("playwright-core").join("cli.js"));
-            paths.push(ad.join("playwright").join("modules").join("playwright").join("cli.js"));
-            // Fallback: node_modules/ (на случай если не переименовано)
-            paths.push(ad.join("playwright").join("node_modules").join("playwright-core").join("cli.js"));
-            paths.push(ad.join("playwright").join("node_modules").join("playwright").join("cli.js"));
-        }
-        // Dev mode
-        if let Ok(exe) = std::env::current_exe() {
-            let mut dir = exe.as_path();
-            for _ in 0..6 {
-                if let Some(parent) = dir.parent() {
-                    let p = parent.join("playwright").join("node_modules").join("playwright-core").join("cli.js");
-                    if p.exists() && !paths.contains(&p) {
-                        paths.push(p);
-                    }
-                    dir = parent;
-                }
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(600)) // 10 минут на скачивание
+        .build()
+        .map_err(|e| format!("Ошибка HTTP клиента: {}", e))?;
+    
+    let mut download_ok = false;
+    let mut last_error = String::new();
+    
+    for url in &info.download_urls {
+        println!("[BROWSERS] Скачивание: {}", url);
+        
+        let response = match client.get(url).send().await {
+            Ok(r) => r,
+            Err(e) => {
+                last_error = format!("{}: {}", url, e);
+                println!("[BROWSERS] Ошибка: {}", last_error);
+                continue;
             }
-        }
-        paths
-    };
-    
-    for cli_path in &cli_candidates {
-        if !cli_path.exists() {
-            println!("[BROWSERS] CLI не найден: {}", cli_path.display());
+        };
+        
+        if !response.status().is_success() {
+            last_error = format!("HTTP {} от {}", response.status(), url);
+            println!("[BROWSERS] {}", last_error);
             continue;
         }
-        println!("[BROWSERS] Найден CLI: {}", cli_path.display());
         
-        let output = Command::new(&node_exe)
-            .arg(cli_path)
-            .args(["install", "chromium"])
-            .env("PLAYWRIGHT_BROWSERS_PATH", &cache_dir)
-            .env("PATH", &enhanced_path)
-            .output();
+        let total_size = response.content_length().unwrap_or(0);
+        println!("[BROWSERS] Размер: {:.1} MB", total_size as f64 / 1048576.0);
         
-        match output {
-            Ok(result) => {
-                let stdout = String::from_utf8_lossy(&result.stdout);
-                let stderr = String::from_utf8_lossy(&result.stderr);
-                println!("[BROWSERS] stdout: {}", stdout);
-                println!("[BROWSERS] stderr: {}", stderr);
-                println!("[BROWSERS] exit code: {:?}", result.status.code());
-                
-                if result.status.success() {
-                    println!("[BROWSERS] Chromium установлен через CLI!");
-                    return Ok("Chromium браузер установлен!".to_string());
-                }
-                all_errors.push(format!("CLI {}: {}", cli_path.display(), stderr.trim()));
-            }
+        let mut file = match std::fs::File::create(&zip_path) {
+            Ok(f) => f,
             Err(e) => {
-                println!("[BROWSERS] Ошибка запуска CLI: {}", e);
-                all_errors.push(format!("CLI запуск: {}", e));
+                last_error = format!("Ошибка создания файла: {}", e);
+                continue;
             }
+        };
+        
+        let mut stream = response.bytes_stream();
+        let mut downloaded: u64 = 0;
+        let mut write_error = false;
+        
+        while let Some(chunk_result) = stream.next().await {
+            match chunk_result {
+                Ok(data) => {
+                    if let Err(e) = file.write_all(&data) {
+                        last_error = format!("Ошибка записи: {}", e);
+                        write_error = true;
+                        break;
+                    }
+                    downloaded += data.len() as u64;
+                    // Логируем каждые ~20 MB
+                    if total_size > 0 && downloaded % (20 * 1024 * 1024) < data.len() as u64 {
+                        println!("[BROWSERS] Скачано: {:.1} / {:.1} MB ({:.0}%)",
+                            downloaded as f64 / 1048576.0,
+                            total_size as f64 / 1048576.0,
+                            downloaded as f64 / total_size as f64 * 100.0);
+                    }
+                }
+                Err(e) => {
+                    last_error = format!("Ошибка загрузки: {}", e);
+                    write_error = true;
+                    break;
+                }
+            }
+        }
+        
+        drop(file);
+        
+        if !write_error {
+            println!("[BROWSERS] ✅ Скачано: {:.1} MB", downloaded as f64 / 1048576.0);
+            download_ok = true;
+            break;
         }
     }
     
-    // ========= Метод 2: npx playwright install chromium =========
-    println!("[BROWSERS] Метод 2: npx...");
+    if !download_ok {
+        let _ = std::fs::remove_file(&zip_path);
+        return Err(format!("Не удалось скачать Chromium. Проверьте интернет-соединение. Детали: {}", last_error));
+    }
     
-    if let Ok(npx_path) = get_npx_cmd() {
-        println!("[BROWSERS] npx: {}", npx_path.display());
-        
-        let pw_dir = app_dir.as_ref().map(|d| d.join("playwright")).filter(|d| d.exists());
-        
-        let mut cmd = Command::new(&npx_path);
-        cmd.args(["playwright", "install", "chromium"])
-           .env("PLAYWRIGHT_BROWSERS_PATH", &cache_dir)
-           .env("PATH", &enhanced_path);
-        
-        if let Some(ref pw_cwd) = pw_dir {
-            cmd.current_dir(pw_cwd);
-            // NODE_PATH: ищем modules (prod) или node_modules (dev)
-            let modules_path = pw_cwd.join("modules");
-            let nm_path = pw_cwd.join("node_modules");
-            let node_path = if modules_path.exists() {
-                modules_path.display().to_string()
-            } else {
-                nm_path.display().to_string()
-            };
-            cmd.env("NODE_PATH", &node_path);
-        }
-        
-        let output = cmd.output();
-        match output {
-            Ok(result) => {
-                let stdout = String::from_utf8_lossy(&result.stdout);
-                let stderr = String::from_utf8_lossy(&result.stderr);
-                println!("[BROWSERS] npx stdout: {}", stdout);
-                println!("[BROWSERS] npx stderr: {}", stderr);
-                
-                if result.status.success() {
-                    println!("[BROWSERS] Chromium установлен через npx!");
-                    return Ok("Chromium браузер установлен!".to_string());
-                }
-                all_errors.push(format!("npx: {}", stderr.trim()));
-            }
-            Err(e) => {
-                println!("[BROWSERS] npx ошибка: {}", e);
-                all_errors.push(format!("npx запуск: {}", e));
-            }
-        }
+    // Создаём директорию chromium-{revision}/
+    let dest_dir = cache_dir.join(format!("chromium-{}", info.revision));
+    if dest_dir.exists() {
+        let _ = std::fs::remove_dir_all(&dest_dir);
+    }
+    std::fs::create_dir_all(&dest_dir)
+        .map_err(|e| format!("Не удалось создать {}: {}", dest_dir.display(), e))?;
+    
+    println!("[BROWSERS] Распаковка в: {}", dest_dir.display());
+    
+    // Распаковываем через PowerShell (надёжно на Windows 10+)
+    let ps_script = format!(
+        "Expand-Archive -Path '{}' -DestinationPath '{}' -Force",
+        zip_path.display(),
+        dest_dir.display()
+    );
+    
+    let extract = std::process::Command::new("powershell")
+        .args(["-NoProfile", "-NonInteractive", "-Command", &ps_script])
+        .output()
+        .map_err(|e| format!("Ошибка запуска PowerShell: {}", e))?;
+    
+    // Удаляем zip
+    let _ = std::fs::remove_file(&zip_path);
+    
+    if !extract.status.success() {
+        let stderr = String::from_utf8_lossy(&extract.stderr);
+        let _ = std::fs::remove_dir_all(&dest_dir);
+        return Err(format!("Ошибка распаковки Chromium: {}", stderr.trim()));
+    }
+    
+    // Проверяем что chrome.exe существует
+    let chrome_exe = dest_dir.join("chrome-win64").join("chrome.exe");
+    if chrome_exe.exists() {
+        println!("[BROWSERS] ✅ Chromium установлен: {}", chrome_exe.display());
+        Ok("Chromium браузер установлен!".to_string())
     } else {
-        all_errors.push("npx не найден".to_string());
+        // Диагностика: показываем что на самом деле в архиве
+        let contents: Vec<String> = std::fs::read_dir(&dest_dir)
+            .ok()
+            .map(|entries| entries.filter_map(|e| e.ok())
+                .map(|e| e.file_name().to_string_lossy().to_string())
+                .collect())
+            .unwrap_or_default();
+        
+        let _ = std::fs::remove_dir_all(&dest_dir);
+        Err(format!("chrome.exe не найден после распаковки. Содержимое: {:?}", contents))
     }
-    
-    // Всё не удалось
-    let error_details = all_errors.join(" | ");
-    println!("[BROWSERS] ВСЕ МЕТОДЫ: {}", error_details);
-    Err(format!("Не удалось установить Chromium. Проверьте интернет. Детали: {}", error_details))
 }
 
 /// Проверяет установлен ли Playwright (наличие пакета)
 #[tauri::command]
 async fn check_playwright_installed(_app: tauri::AppHandle) -> Result<bool, String> {
-    // Проверяем наличие playwright пакета в bundled или через npx
+    // Проверяем наличие playwright пакета в bundled
     if let Ok(app_dir) = get_app_dir() {
         // Production: modules/ (переименовано из node_modules)
         let pw_check = app_dir.join("playwright").join("modules").join("playwright-core");
@@ -1000,17 +1053,17 @@ async fn check_playwright_installed(_app: tauri::AppHandle) -> Result<bool, Stri
         }
     }
     
-    // Проверяем через npx
-    if let Ok(npx_path) = get_npx_cmd() {
-        let check = std::process::Command::new(&npx_path)
-            .args(["playwright", "--version"])
-            .env("PATH", get_enhanced_path())
-            .output();
-        
-        if let Ok(output) = check {
-            if output.status.success() {
-                println!("[CHECK] Playwright установлен (npx)");
-                return Ok(true);
+    // Dev mode: ищем node_modules
+    if let Ok(exe) = std::env::current_exe() {
+        let mut dir = exe.as_path();
+        for _ in 0..6 {
+            if let Some(parent) = dir.parent() {
+                let pw_dev = parent.join("playwright").join("node_modules").join("playwright-core");
+                if pw_dev.exists() {
+                    println!("[CHECK] Playwright пакет найден (dev)");
+                    return Ok(true);
+                }
+                dir = parent;
             }
         }
     }
@@ -1161,16 +1214,22 @@ async fn get_playwright_version(_app: tauri::AppHandle) -> Result<String, String
         }
     }
     
-    // Fallback: через npx
-    if let Ok(npx_path) = get_npx_cmd() {
-        let check = std::process::Command::new(&npx_path)
-            .args(["playwright", "--version"])
-            .env("PATH", get_enhanced_path())
-            .output();
-        
-        if let Ok(output) = check {
-            if output.status.success() {
-                return Ok(String::from_utf8_lossy(&output.stdout).trim().to_string());
+    // Dev mode: ищем в node_modules
+    if let Ok(exe) = std::env::current_exe() {
+        let mut dir = exe.as_path();
+        for _ in 0..6 {
+            if let Some(parent) = dir.parent() {
+                let pj = parent.join("playwright").join("node_modules").join("playwright").join("package.json");
+                if pj.exists() {
+                    if let Ok(content) = std::fs::read_to_string(&pj) {
+                        if let Ok(json) = serde_json::from_str::<serde_json::Value>(&content) {
+                            if let Some(version) = json.get("version").and_then(|v| v.as_str()) {
+                                return Ok(format!("Version {}", version));
+                            }
+                        }
+                    }
+                }
+                dir = parent;
             }
         }
     }
@@ -1178,31 +1237,27 @@ async fn get_playwright_version(_app: tauri::AppHandle) -> Result<String, String
     Err("Playwright не установлен".to_string())
 }
 
-/// Обновляет Playwright runtime
+/// Обновляет Playwright runtime (перекачивает Chromium)
 #[tauri::command]
 async fn update_playwright_runtime(_app: tauri::AppHandle) -> Result<String, String> {
     println!("[Playwright] Updating runtime...");
     
-    let enhanced_path = get_enhanced_path();
+    // Удаляем существующий кеш и скачиваем заново
     let cache_dir = get_playwright_cache_dir()?;
-    
-    // Обновляем через bundled npx
-    if let Ok(npx_path) = get_npx_cmd() {
-        // Обновляем Chromium
-        let install = std::process::Command::new(&npx_path)
-            .args(["playwright", "install", "chromium"])
-            .env("PLAYWRIGHT_BROWSERS_PATH", &cache_dir)
-            .env("PATH", &enhanced_path)
-            .output()
-            .map_err(|e| format!("Ошибка: {}", e))?;
-        
-        if install.status.success() {
-            return Ok("Playwright обновлён".to_string());
+    if cache_dir.exists() {
+        // Удаляем только chromium-* директории
+        if let Ok(entries) = std::fs::read_dir(&cache_dir) {
+            for entry in entries.filter_map(|e| e.ok()) {
+                let name = entry.file_name().to_string_lossy().to_string();
+                if name.starts_with("chromium-") && entry.path().is_dir() {
+                    let _ = std::fs::remove_dir_all(entry.path());
+                    println!("[Playwright] Удалён: {}", name);
+                }
+            }
         }
-        
-        let stderr = String::from_utf8_lossy(&install.stderr);
-        return Err(format!("Ошибка обновления: {}", stderr));
     }
     
-    Err("npx не найден для обновления".to_string())
+    // Скачиваем заново через прямую загрузку
+    install_playwright_browsers_cmd().await?;
+    Ok("Playwright обновлён".to_string())
 }

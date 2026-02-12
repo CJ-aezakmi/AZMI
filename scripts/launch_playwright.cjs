@@ -36,9 +36,10 @@ log('[LAUNCHER] Кеш браузеров:', browserCachePath);
 
 // ─── LOAD PLAYWRIGHT ──────────────────────────────────────────────────
 const playwrightPaths = [
-  path.join(appDir, 'playwright', 'node_modules', 'playwright'),
-  path.join(appDir, 'node_modules', 'playwright'),
-  'playwright'
+  path.join(appDir, 'playwright', 'modules', 'playwright'),       // Production: modules/ (renamed from node_modules)
+  path.join(appDir, 'playwright', 'node_modules', 'playwright'),  // Dev/fallback
+  path.join(appDir, 'node_modules', 'playwright'),                // Alt fallback
+  'playwright'                                                     // System
 ];
 
 let playwright = null;

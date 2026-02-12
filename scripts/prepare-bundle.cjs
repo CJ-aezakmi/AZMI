@@ -166,6 +166,37 @@ if (!fs.existsSync(playwrightCoreCheck)) {
       console.log('   ✅ node_modules → modules (обход ограничения Tauri)');
     }
 
+    // *** Удаляем .bin/ (содержит symlinks → ломает Tauri bundling) ***
+    const binDir = path.join(modulesDir, '.bin');
+    if (fs.existsSync(binDir)) {
+      fs.rmSync(binDir, { recursive: true, force: true });
+      console.log('   ✅ Удалён modules/.bin/ (symlinks)');
+    }
+
+    // *** Удаляем вложенные node_modules/ внутри modules/ ***
+    // Tauri исключает ВСЕ папки с именем node_modules на любом уровне!
+    function removeNestedNodeModules(dir) {
+      if (!fs.existsSync(dir)) return;
+      for (const item of fs.readdirSync(dir)) {
+        const fullPath = path.join(dir, item);
+        if (!fs.statSync(fullPath).isDirectory()) continue;
+        if (item === 'node_modules') {
+          fs.rmSync(fullPath, { recursive: true, force: true });
+          console.log(`   ✅ Удалён вложенный: ${path.relative(PLAYWRIGHT_DIR, fullPath)}`);
+        } else {
+          removeNestedNodeModules(fullPath);
+        }
+      }
+    }
+    removeNestedNodeModules(modulesDir);
+
+    // *** Удаляем .package-lock.json (не нужен в production) ***
+    const pkgLock = path.join(modulesDir, '.package-lock.json');
+    if (fs.existsSync(pkgLock)) {
+      fs.unlinkSync(pkgLock);
+      console.log('   ✅ Удалён .package-lock.json');
+    }
+
     console.log('   ✅ Playwright пакет готов');
   } catch (error) {
     console.error('   ❌ Ошибка установки Playwright:', error.message);
@@ -176,7 +207,7 @@ if (!fs.existsSync(playwrightCoreCheck)) {
 }
 
 // ============================================================
-// Шаг 3: Убираем npm/npx/node_modules из node/ — они больше не нужны
+// Шаг 3: Убираем npm/npx/node_modules из node/
 // В установщик попадёт ТОЛЬКО node.exe (~70 MB)
 // ============================================================
 console.log('\n📦 Шаг 3: Очистка node/ (оставляем только node.exe)...');
@@ -192,9 +223,56 @@ if (fs.existsSync(nodeDir)) {
 console.log('   ✅ Оставлен только node.exe');
 
 // ============================================================
-// Шаг 4: Копируем скрипты
+// Шаг 4: Генерируем chromium-info.json для прямой загрузки
+// Читаем browsers.json → извлекаем URL скачивания Chromium
+// Rust-код скачает браузер НАПРЯМУЮ, без npx/playwright CLI!
 // ============================================================
-console.log('\n📦 Шаг 4: Скрипты...');
+console.log('\n📦 Шаг 4: Генерация chromium-info.json...');
+
+const browsersJsonPath = path.join(modulesDir, 'playwright-core', 'browsers.json');
+const chromiumInfoPath = path.join(PLAYWRIGHT_DIR, 'chromium-info.json');
+
+if (fs.existsSync(browsersJsonPath)) {
+  try {
+    const browsersData = JSON.parse(fs.readFileSync(browsersJsonPath, 'utf8'));
+    const chromium = browsersData.browsers.find(b => b.name === 'chromium');
+    
+    if (chromium) {
+      const revision = chromium.revision;
+      const browserVersion = chromium.browserVersion;
+      
+      // CFT URL format (used by Playwright for Windows x64):
+      // https://cdn.playwright.dev/builds/cft/{browserVersion}/win64/chrome-win64.zip
+      const chromiumInfo = {
+        revision,
+        browserVersion,
+        downloadUrls: [
+          `https://cdn.playwright.dev/builds/cft/${browserVersion}/win64/chrome-win64.zip`,
+          `https://playwright.download.prss.microsoft.com/dbazure/download/playwright/builds/cft/${browserVersion}/win64/chrome-win64.zip`,
+          `https://storage.googleapis.com/chrome-for-testing-public/${browserVersion}/win64/chrome-win64.zip`
+        ],
+        executablePath: ['chrome-win64', 'chrome.exe']
+      };
+      
+      fs.writeFileSync(chromiumInfoPath, JSON.stringify(chromiumInfo, null, 2));
+      console.log(`   ✅ chromium-info.json: revision=${revision}, version=${browserVersion}`);
+    } else {
+      console.error('   ❌ Chromium не найден в browsers.json');
+      process.exit(1);
+    }
+  } catch (err) {
+    console.error('   ❌ Ошибка чтения browsers.json:', err.message);
+    process.exit(1);
+  }
+} else {
+  console.error('   ❌ browsers.json не найден:', browsersJsonPath);
+  process.exit(1);
+}
+
+// ============================================================
+// Шаг 5: Копируем скрипты
+// ============================================================
+console.log('\n📦 Шаг 5: Скрипты...');
 
 if (!fs.existsSync(SCRIPTS_DIR)) {
   fs.mkdirSync(SCRIPTS_DIR, { recursive: true });
@@ -212,12 +290,13 @@ if (fs.existsSync(launchScript)) {
 }
 
 // ============================================================
-// Шаг 5: Проверка и итоги
+// Шаг 6: Проверка и итоги
 // ============================================================
 
 // Проверяем критичные файлы
 const criticalFiles = [
   path.join(NODE_DIR, 'node.exe'),
+  path.join(PLAYWRIGHT_DIR, 'chromium-info.json'),
   path.join(PLAYWRIGHT_DIR, 'modules', 'playwright-core', 'cli.js'),
   path.join(SCRIPTS_DIR, 'launch_playwright.cjs'),
 ];

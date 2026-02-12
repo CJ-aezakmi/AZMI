@@ -1,6 +1,6 @@
 {
   "productName": "AEZAKMI",
-  "version": "2.2.3",
+  "version": "2.2.4",
   "identifier": "com.aezakmi.antidetect",
   "build": {
     "beforeDevCommand": "pnpm dev",
@@ -42,6 +42,7 @@
     "resources": {
       "node/node.exe": "node/node.exe",
       "scripts/*": "scripts/",
+      "playwright/*": "playwright/",
       "playwright/**/*": "playwright/"
     },
     "windows": {
