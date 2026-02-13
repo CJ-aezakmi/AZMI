@@ -32,10 +32,14 @@ const ProxyModal = ({ open, onOpenChange, onAdd }: ProxyModalProps) => {
       // URL формат: protocol://username:password@host:port
       if (line.includes('://')) {
         const url = new URL(line);
+        const proxyType = (url.protocol.replace(':', '') as any) || 'http';
+        const proxyHost = url.hostname;
+        const proxyPort = Number(url.port) || (url.protocol === 'https:' ? 443 : 80);
         return {
-          type: (url.protocol.replace(':', '') as any) || 'http',
-          host: url.hostname,
-          port: Number(url.port) || (url.protocol === 'https:' ? 443 : 80),
+          name: `${proxyType.toUpperCase()} - ${proxyHost}:${proxyPort}`,
+          type: proxyType,
+          host: proxyHost,
+          port: proxyPort,
           login: url.username || undefined,
           username: url.username || undefined,
           password: url.password || undefined,
@@ -49,6 +53,7 @@ const ProxyModal = ({ open, onOpenChange, onAdd }: ProxyModalProps) => {
       // host:port:username:password (4 части)
       if (parts.length === 4) {
         return {
+          name: `HTTP - ${parts[0]}:${parts[1]}`,
           type: 'http',
           host: parts[0],
           port: Number(parts[1]) || 80,
@@ -62,6 +67,7 @@ const ProxyModal = ({ open, onOpenChange, onAdd }: ProxyModalProps) => {
       // host:port (2 части)
       if (parts.length === 2) {
         return {
+          name: `HTTP - ${parts[0]}:${parts[1]}`,
           type: 'http',
           host: parts[0],
           port: Number(parts[1]) || 80,
@@ -76,6 +82,7 @@ const ProxyModal = ({ open, onOpenChange, onAdd }: ProxyModalProps) => {
         const [host, port] = hostPort.split(':');
 
         return {
+          name: `HTTP - ${host}:${port}`,
           type: 'http',
           host,
           port: Number(port) || 80,
@@ -90,10 +97,13 @@ const ProxyModal = ({ open, onOpenChange, onAdd }: ProxyModalProps) => {
       if (line.includes('//')) {
         const [type, rest] = line.split('//');
         const [host, port] = rest.split(':');
+        const proxyType = (type.replace(':', '') as any) || 'http';
+        const proxyPort = Number(port) || (type === 'https:' ? 443 : 80);
         return {
-          type: (type.replace(':', '') as any) || 'http',
+          name: `${proxyType.toUpperCase()} - ${host}:${proxyPort}`,
+          type: proxyType,
           host,
-          port: Number(port) || (type === 'https:' ? 443 : 80),
+          port: proxyPort,
           enabled: true,
         } as Proxy;
       }
@@ -149,6 +159,7 @@ const ProxyModal = ({ open, onOpenChange, onAdd }: ProxyModalProps) => {
     }
 
     const proxy: Proxy = {
+      name: `${manualType.toUpperCase()} - ${manualHost}:${manualPort}`,
       type: manualType,
       host: manualHost,
       port: Number(manualPort),

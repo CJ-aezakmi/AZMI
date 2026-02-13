@@ -1,4 +1,4 @@
-// src-tauri/src/lib.rs — AEZAKMI Pro v3.0.2
+// src-tauri/src/lib.rs — AEZAKMI Pro v3.0.3
 
 use base64::Engine;
 use tauri::Manager;
@@ -106,7 +106,7 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_shell::init())
         .setup(|app| {
-            println!("[STARTUP] AEZAKMI Pro v3.0.2");
+            println!("[STARTUP] AEZAKMI Pro v3.0.3");
             
             // Распаковываем playwright-core.zip в AppData при первом запуске
             match ensure_playwright_ready() {

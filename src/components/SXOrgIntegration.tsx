@@ -185,7 +185,7 @@ const SXOrgIntegration = ({ open, onClose, onProxiesImported }: SXOrgIntegration
           <div className="flex justify-between gap-2">
             <Button
               variant="outline"
-              onClick={() => window.open('https://sx.org/', '_blank')}
+              onClick={() => window.open('https://my.sx.org/auth/login/?utm-source=aezakmi', '_blank')}
               className="flex-1"
             >
               <ExternalLink className="w-4 h-4 mr-2" />
@@ -226,22 +226,22 @@ const SXOrgIntegration = ({ open, onClose, onProxiesImported }: SXOrgIntegration
 
         {/* Баланс */}
         {balance && (
-          <div className="grid grid-cols-3 gap-4 p-4 bg-gray-50 dark:bg-gray-800 rounded-md">
-            <div>
+          <div className="flex items-center gap-4 p-4 bg-gray-50 dark:bg-gray-800 rounded-md">
+            <div className="flex-1">
               <div className="text-sm text-gray-600 dark:text-gray-400">Баланс</div>
               <div className="text-xl font-bold flex items-center gap-1">
                 <DollarSign className="w-4 h-4" />
                 {parseFloat(balance.balance).toFixed(2)}
               </div>
             </div>
-            <div>
-              <div className="text-sm text-gray-600 dark:text-gray-400">Трафик</div>
-              <div className="text-xl font-bold">{balance.balance_traffic} GB</div>
-            </div>
-            <div>
-              <div className="text-sm text-gray-600 dark:text-gray-400">Доступно</div>
-              <div className="text-xl font-bold">{balance.all_available_traffic} GB</div>
-            </div>
+            <Button
+              variant="outline"
+              onClick={() => window.open('https://my.sx.org/auth/login/?utm-source=aezakmi', '_blank')}
+              className="flex items-center gap-2"
+            >
+              <DollarSign className="w-4 h-4" />
+              Пополнить баланс
+            </Button>
           </div>
         )}
 

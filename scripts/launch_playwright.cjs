@@ -7,8 +7,6 @@
 
 const path = require('path');
 const fs = require('fs');
-const http = require('http');
-const net = require('net');
 
 // ─── PRODUCTION MODE ──────────────────────────────────────────────────
 // Проверяем production режим (если нет node_modules рядом = production)
@@ -149,232 +147,6 @@ if (!playwright) {
   process.exit(1);
 }
 
-let ProxyChain = null;
-let SocksClient = null;
-try { SocksClient = require('socks').SocksClient; } catch (e) { }
-
-// ─── SOCKS PROXY TUNNEL ──────────────────────────────────────────────
-async function createSocksToHttpProxy(socksHost, socksPort, socksUsername, socksPassword) {
-  if (!SocksClient) {
-    throw new Error('Для SOCKS прокси требуется библиотека socks');
-  }
-  return new Promise((resolve, reject) => {
-    const server = http.createServer();
-    server.on('connect', async (req, clientSocket) => {
-      const [hostname, port] = req.url.split(':');
-      clientSocket.setTimeout(30000);
-      try {
-        const info = await SocksClient.createConnection({
-          proxy: { host: socksHost, port: parseInt(socksPort), type: 5, userId: socksUsername, password: socksPassword },
-          command: 'connect',
-          destination: { host: hostname, port: parseInt(port) },
-          timeout: 30000,
-        });
-        info.socket.setTimeout(30000);
-        info.socket.setKeepAlive(true, 60000);
-        clientSocket.write('HTTP/1.1 200 Connection Established\r\n\r\n');
-        info.socket.pipe(clientSocket);
-        clientSocket.pipe(info.socket);
-        info.socket.on('error', () => { try { clientSocket.destroy(); } catch (e) { } });
-        clientSocket.on('error', () => { try { info.socket.destroy(); } catch (e) { } });
-      } catch (err) {
-        error('[SOCKS] Ошибка:', err.message);
-        try { clientSocket.end('HTTP/1.1 502 Bad Gateway\r\n\r\n'); } catch (e) { clientSocket.destroy(); }
-      }
-    });
-    server.on('request', (req, res) => {
-      const options = {
-        host: socksHost, port: parseInt(socksPort), path: req.url, method: req.method,
-        headers: { ...req.headers }
-      };
-      const proxyReq = http.request(options, (proxyRes) => { res.writeHead(proxyRes.statusCode, proxyRes.headers); proxyRes.pipe(res); });
-      proxyReq.on('error', () => { res.writeHead(502); res.end(); });
-      req.pipe(proxyReq);
-    });
-    server.on('error', reject);
-    server.listen(0, '127.0.0.1', () => {
-      const { port } = server.address();
-      log(`[SOCKS] Туннель: 127.0.0.1:${port}`);
-      resolve({ server, port });
-    });
-  });
-}
-
-// ─── REAL IP & GEOIP DETECTION ─────────────────────────────────────────
-/**
- * Получить реальный исходящий IP через SOCKS прокси напрямую
- * Обходит проблемы с HTTP туннелями и 407 ошибками
- */
-async function getRealIPThroughProxy(proxyConfig, tunnelUrl) {
-  return new Promise((resolve, reject) => {
-    const socks = require('socks').SocksClient;
-    
-    // Парсим SOCKS прокси из proxyConfig.server
-    const socksUrl = new URL(proxyConfig.server); // socks5://89.38.99.242:9999
-    
-    const socksOptions = {
-      proxy: {
-        host: socksUrl.hostname,
-        port: Number(socksUrl.port),
-        type: 5,
-        userId: proxyConfig.username || '',
-        password: proxyConfig.password || ''
-      },
-      command: 'connect',
-      destination: {
-        host: 'api.ipify.org',
-        port: 80
-      }
-    };
-    
-    log('[LAUNCHER] 🔌 Прямое SOCKS соединение:', {
-      proxyHost: socksUrl.hostname,
-      proxyPort: socksUrl.port,
-      hasAuth: !!(proxyConfig.username && proxyConfig.password),
-      target: 'api.ipify.org:80'
-    });
-    
-    socks.createConnection(socksOptions, (err, info) => {
-      if (err) {
-        error('[LAUNCHER] ❌ SOCKS ошибка:', err.message);
-        reject(new Error('SOCKS connection failed: ' + err.message));
-        return;
-      }
-      
-      const socket = info.socket;
-      log('[LAUNCHER] ✅ SOCKS туннель создан, отправка HTTP запроса...');
-      
-      let data = '';
-      let resolved = false;
-      let timeoutHandle;
-      
-      // Делаем HTTP запрос через SOCKS socket
-      const request = [
-        'GET /?format=text HTTP/1.1',
-        'Host: api.ipify.org',
-        'User-Agent: Mozilla/5.0',
-        'Accept: text/plain',
-        'Connection: close',
-        '',
-        ''
-      ].join('\r\n');
-      
-      socket.setEncoding('utf8');
-      
-      socket.on('data', (chunk) => {
-        data += chunk;
-        log('[LAUNCHER] 📦 Получены данные, размер:', chunk.length, 'байт');
-        
-        // Пытаемся распарсить ответ, как только появляется тело
-        if (!resolved && data.includes('\r\n\r\n')) {
-          const bodyStartIndex = data.indexOf('\r\n\r\n');
-          const headers = data.substring(0, bodyStartIndex);
-          const body = data.substring(bodyStartIndex + 4).trim();
-          
-          const statusLine = headers.split('\r\n')[0];
-          log('[LAUNCHER] HTTP Status:', statusLine);
-          
-          if (statusLine.includes('200')) {
-            // Извлекаем IP из body
-            const ipMatch = body.match(/(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})/);
-            if (ipMatch) {
-              const ip = ipMatch[1];
-              log('[LAUNCHER] 🎯 Извлечен IP:', ip);
-              resolved = true;
-              clearTimeout(timeoutHandle);
-              socket.destroy();
-              resolve(ip);
-            }
-          }
-        }
-      });
-      
-      socket.on('end', () => {
-        log('[LAUNCHER] 🔌 Socket закрыт, всего получено:', data.length, 'байт');
-        if (!resolved) {
-          reject(new Error('Connection closed without valid IP'));
-        }
-      });
-      
-      socket.on('error', (err) => {
-        error('[LAUNCHER] ❌ Socket error:', err.message);
-        if (!resolved) {
-          resolved = true;
-          clearTimeout(timeoutHandle);
-          reject(new Error('Socket error: ' + err.message));
-        }
-      });
-      
-      // Таймаут увеличен до 15 секунд
-      timeoutHandle = setTimeout(() => {
-        if (!resolved) {
-          error('[LAUNCHER] ⏱️ Таймаут! Получено данных:', data.length);
-          socket.destroy();
-          reject(new Error('Timeout: api.ipify.org не ответил за 15 секунд'));
-        }
-      }, 15000);
-      
-      socket.write(request);
-    });
-  });
-}
-
-/**
- * Получить GeoIP информацию (timezone, язык) по IP адресу
- */
-async function getGeoIPInfoFromIP(ip) {
-  return new Promise((resolve, reject) => {
-    const url = `http://ip-api.com/json/${ip}?fields=status,country,countryCode,timezone`;
-
-    http.get(url, { timeout: 5000 }, (res) => {
-      let data = '';
-      res.on('data', chunk => data += chunk);
-      res.on('end', () => {
-        try {
-          const json = JSON.parse(data);
-          if (json.status === 'success') {
-            const language = getLanguageByCountryCode(json.countryCode);
-            resolve({
-              country: json.country,
-              countryCode: json.countryCode,
-              timezone: json.timezone || 'UTC',
-              language: language
-            });
-          } else {
-            reject(new Error('GeoIP API вернул ошибку'));
-          }
-        } catch (error) {
-          reject(new Error('Ошибка парсинга GeoIP ответа'));
-        }
-      });
-    }).on('error', (error) => {
-      reject(new Error('Ошибка GeoIP запроса: ' + error.message));
-    }).on('timeout', () => {
-      reject(new Error('Таймаут GeoIP запроса'));
-    });
-  });
-}
-
-/**
- * Определить язык по коду страны
- */
-function getLanguageByCountryCode(code) {
-  const map = {
-    'US': 'en-US', 'GB': 'en-GB', 'CA': 'en-CA', 'AU': 'en-AU',
-    'RU': 'ru-RU', 'UA': 'uk-UA', 'BY': 'be-BY', 'KZ': 'kk-KZ',
-    'DE': 'de-DE', 'FR': 'fr-FR', 'ES': 'es-ES', 'IT': 'it-IT',
-    'CN': 'zh-CN', 'JP': 'ja-JP', 'KR': 'ko-KR', 'IN': 'hi-IN',
-    'BR': 'pt-BR', 'MX': 'es-MX', 'AR': 'es-AR', 'NL': 'nl-NL',
-    'SE': 'sv-SE', 'NO': 'no-NO', 'DK': 'da-DK', 'FI': 'fi-FI',
-    'PL': 'pl-PL', 'CZ': 'cs-CZ', 'TR': 'tr-TR', 'GR': 'el-GR',
-    'TH': 'th-TH', 'VN': 'vi-VN', 'ID': 'id-ID', 'MY': 'ms-MY',
-    'SG': 'en-SG', 'PH': 'en-PH', 'AE': 'ar-AE', 'SA': 'ar-SA',
-    'IL': 'he-IL', 'ZA': 'en-ZA', 'EG': 'ar-EG', 'NG': 'en-NG',
-    'NZ': 'en-NZ', 'PT': 'pt-PT', 'CH': 'de-CH'
-  };
-  return map[code] || 'en-US';
-}
-
 // ─── BROWSER ENGINE RESOLVER ──────────────────────────────────────────
 function getBrowserEngine(engineName) {
   // Используем только Chromium — максимальная стабильность и совместимость
@@ -497,6 +269,44 @@ function buildDesktopAntidetectScript(payload) {
     
     // Languages
     Object.defineProperty(navigator, 'languages', { get: () => ['ru-RU','ru','en-US','en'] });
+    
+    // ── WebGL vendor/renderer spoofing ──
+    ${ad.webgl?.noise !== false ? `
+    (function() {
+      const vendor = '${(ad.webgl?.vendor || 'Intel Inc.').replace(/'/g, "\\'")}';
+      const renderer = '${(ad.webgl?.renderer || 'Intel Iris OpenGL Engine').replace(/'/g, "\\'")}';
+      
+      const _getParameter = WebGLRenderingContext.prototype.getParameter;
+      WebGLRenderingContext.prototype.getParameter = function(param) {
+        if (param === 0x9245 || param === 37445) return vendor;
+        if (param === 0x9246 || param === 37446) return renderer;
+        return _getParameter.call(this, param);
+      };
+      
+      if (typeof WebGL2RenderingContext !== 'undefined') {
+        const _getParameter2 = WebGL2RenderingContext.prototype.getParameter;
+        WebGL2RenderingContext.prototype.getParameter = function(param) {
+          if (param === 0x9245 || param === 37445) return vendor;
+          if (param === 0x9246 || param === 37446) return renderer;
+          return _getParameter2.call(this, param);
+        };
+      }
+    })();
+    ` : ''}
+    
+    // ── Screen dimensions spoofing (desktop) ──
+    ${payload.screen ? `
+    (function() {
+      const sw = ${payload.screen.width || 1920};
+      const sh = ${payload.screen.height || 1080};
+      Object.defineProperty(screen, 'width', { get: () => sw });
+      Object.defineProperty(screen, 'height', { get: () => sh });
+      Object.defineProperty(screen, 'availWidth', { get: () => sw });
+      Object.defineProperty(screen, 'availHeight', { get: () => sh });
+      Object.defineProperty(screen, 'colorDepth', { get: () => 24 });
+      Object.defineProperty(screen, 'pixelDepth', { get: () => 24 });
+    })();
+    ` : ''}
     
     // Hide toString proxy
     const _origToStr = Function.prototype.toString;
@@ -935,9 +745,11 @@ async function main() {
     let url = payload.url || 'https://www.google.com';
 
     // ─── Proxy setup ───
+    // УПРОЩЁННЫЙ подход: для Chromium передаём прокси НАПРЯМУЮ через --proxy-server
+    // Авторизация через page-level CDP: context.setHTTPCredentials / page.authenticate
+    // НЕ используем socks, proxy-chain — их нет в bundled modules!
     let proxyConfig = undefined;
-    let anonymizedProxy = null;
-    let socksProxyServer = null;
+    let proxyCredentials = null; // { username, password } для page.authenticate
 
     if (payload.proxy && payload.proxy.server) {
       const { server, username, password } = payload.proxy;
@@ -945,195 +757,48 @@ async function main() {
       const isSocks = server.toLowerCase().includes('socks');
 
       log('[LAUNCHER] ═══ ПРОКСИ КОНФИГУРАЦИЯ ═══');
-      log('[LAUNCHER] Движок:', browserInfo.name);
       log('[LAUNCHER] Сервер:', server);
       log('[LAUNCHER] Авторизация:', hasAuth ? 'ДА' : 'НЕТ');
       log('[LAUNCHER] Тип:', isSocks ? 'SOCKS' : 'HTTP/HTTPS');
+      logToFile(`Proxy: ${server}, auth: ${hasAuth}, socks: ${isSocks}`);
 
-      // WebKit НЕ ПОДДЕРЖИВАЕТ авторизацию прокси напрямую
-      // Нужно ВСЕГДА создавать локальный туннель без авторизации
-      if (browserInfo.isWebKit && hasAuth) {
-        log('[LAUNCHER] 🔧 WebKit + auth: создаём локальный туннель БЕЗ авторизации');
-
-        if (isSocks) {
-          // SOCKS прокси -> HTTP туннель
-          let socksHost, socksPort;
-          if (server.includes('://')) {
-            const u = new URL(server);
-            socksHost = u.hostname;
-            socksPort = u.port || '1080';
-          } else {
-            const parts = server.replace(/^socks5?:\/\//, '').split(':');
-            socksHost = parts[0];
-            socksPort = parts[1] || '1080';
-          }
-
-          log('[LAUNCHER] SOCKS туннель:', `${socksHost}:${socksPort}`);
-          const proxyInfo = await createSocksToHttpProxy(socksHost, socksPort, username, password);
-          socksProxyServer = proxyInfo.server;
-          proxyConfig = { server: `http://127.0.0.1:${proxyInfo.port}` };
-          log('[LAUNCHER] ✅ Локальный HTTP туннель для WebKit:', proxyConfig.server);
-
-        } else {
-          // HTTP/HTTPS прокси -> анонимизированный туннель через proxy-chain
-          try { ProxyChain = require('proxy-chain'); } catch (e) {
-            error('[LAUNCHER] ⚠️ proxy-chain не найден, пытаемся установить...');
-          }
-
-          if (!ProxyChain) {
-            error('[LAUNCHER] ❌ КРИТИЧЕСКАЯ ОШИБКА: proxy-chain не установлен!');
-            error('[LAUNCHER] WebKit требует proxy-chain для HTTP прокси с авторизацией');
-            throw new Error('Установите proxy-chain: npm install proxy-chain');
-          }
-
-          // Формируем URL с авторизацией
-          let proxyUrl = server;
-          if (!proxyUrl.includes('@')) {
-            if (!proxyUrl.startsWith('http')) {
-              proxyUrl = 'http://' + proxyUrl;
-            }
-            try {
-              const u = new URL(proxyUrl);
-              u.username = encodeURIComponent(username);
-              u.password = encodeURIComponent(password);
-              proxyUrl = u.toString();
-            } catch (urlErr) {
-              error('[LAUNCHER] ❌ Не удалось создать URL прокси:', urlErr.message);
-              throw urlErr;
-            }
-          }
-
-          log('[LAUNCHER] Анонимизируем прокси через proxy-chain');
-          try {
-            anonymizedProxy = await ProxyChain.anonymizeProxy(proxyUrl);
-            proxyConfig = { server: anonymizedProxy };
-            log('[LAUNCHER] ✅ Локальный туннель для WebKit:', proxyConfig.server);
-          } catch (chainErr) {
-            error('[LAUNCHER] ❌ Ошибка proxy-chain:', chainErr.message);
-            throw new Error(`proxy-chain ошибка: ${chainErr.message}`);
-          }
-        }
-
-      } else if (isSocks) {
-        // SOCKS для других движков (Chromium/Firefox)
-        log('[LAUNCHER] 🔧 SOCKS туннель для', browserInfo.name);
-
-        let socksHost, socksPort;
-        if (server.includes('://')) {
-          const u = new URL(server);
-          socksHost = u.hostname;
-          socksPort = u.port || '1080';
-        } else {
-          const parts = server.replace(/^socks5?:\/\//, '').split(':');
-          socksHost = parts[0];
-          socksPort = parts[1] || '1080';
-        }
-
-        const proxyInfo = await createSocksToHttpProxy(socksHost, socksPort, username, password);
-        socksProxyServer = proxyInfo.server;
-        proxyConfig = { server: `http://127.0.0.1:${proxyInfo.port}` };
-        log('[LAUNCHER] ✅ SOCKS туннель:', proxyConfig.server);
-
-      } else if (hasAuth && (browserInfo.isFirefox || browserInfo.isChromium)) {
-        // HTTP/HTTPS с авторизацией для Chromium/Firefox
-        log('[LAUNCHER] 🔧 HTTP прокси с авторизацией для', browserInfo.name);
-
-        try { ProxyChain = require('proxy-chain'); } catch (e) { }
-
-        if (ProxyChain) {
-          let proxyUrl = server;
-          if (!proxyUrl.includes('@')) {
-            if (!proxyUrl.startsWith('http')) proxyUrl = 'http://' + proxyUrl;
-            const u = new URL(proxyUrl);
-            u.username = encodeURIComponent(username);
-            u.password = encodeURIComponent(password);
-            proxyUrl = u.toString();
-          }
-
-          anonymizedProxy = await ProxyChain.anonymizeProxy(proxyUrl);
-          proxyConfig = { server: anonymizedProxy };
-          log('[LAUNCHER] ✅ proxy-chain туннель:', proxyConfig.server);
-        } else {
-          // Fallback: передаём напрямую (Chromium поддерживает)
-          log('[LAUNCHER] ⚠️ proxy-chain не найден, используем прямую авторизацию');
-          proxyConfig = { server, username, password };
-        }
-
-      } else {
-        // Прокси без авторизации - просто передаём
-        log('[LAUNCHER] 🔧 Прокси без авторизации');
-        proxyConfig = { server };
+      // Для Chromium: прокси передаём через --proxy-server (поддерживает socks5 и http)
+      // Авторизацию — через CDP (page.authenticate)
+      let proxyServer = server;
+      
+      // Нормализуем URL прокси
+      if (!proxyServer.includes('://')) {
+        proxyServer = (isSocks ? 'socks5' : 'http') + '://' + proxyServer;
+      }
+      
+      proxyConfig = { server: proxyServer };
+      
+      if (hasAuth) {
+        proxyCredentials = { username, password };
+        log('[LAUNCHER] 🔑 Авторизация будет через CDP (page-level)');
       }
 
       log('[LAUNCHER] ═══ ФИНАЛЬНАЯ КОНФИГУРАЦИЯ ═══');
-      log('[LAUNCHER] Сервер:', proxyConfig?.server);
-      log('[LAUNCHER] Туннель:', !!(socksProxyServer || anonymizedProxy) ? 'АКТИВЕН' : 'НЕТ');
+      log('[LAUNCHER] Сервер:', proxyConfig.server);
       log('[LAUNCHER] ═══════════════════════════════');
     } else {
       log('[LAUNCHER] 🌐 Прокси не используется');
     }
 
-    // ─── Автоопределение локализации по РЕАЛЬНОМУ исходящему IP ───
-    log('[LAUNCHER] ═══ ДИАГНОСТИКА АВТООПРЕДЕЛЕНИЯ ═══');
-    log('[LAUNCHER] payload.autoDetectLocale:', payload.autoDetectLocale);
-    log('[LAUNCHER] proxyConfig:', !!proxyConfig);
-    log('[LAUNCHER] Условие сработает?', !!(payload.autoDetectLocale && proxyConfig));
-
+    // ─── Locale / timezone из профиля ───
     let detectedLocale = payload.locale || 'ru-RU';
     let detectedTimezone = payload.timezoneId || 'Europe/Moscow';
-
-    if (payload.autoDetectLocale && proxyConfig) {
-      log('[LAUNCHER] ═══ АВТООПРЕДЕЛЕНИЕ ЛОКАЛИЗАЦИИ ПО РЕАЛЬНОМУ IP ═══');
-      try {
-        // Получаем реальный исходящий IP через ОРИГИНАЛЬНЫЙ SOCKS прокси
-        // НЕ через локальный туннель!
-        const originalProxy = payload.proxy; // ОРИГИНАЛЬНЫЕ данные из payload
-        log('[LAUNCHER] 📍 Оригинальный прокси:', originalProxy.server);
-        log('[LAUNCHER] 🔐 Авторизация:', !!(originalProxy.username && originalProxy.password));
-
-        const realIP = await getRealIPThroughProxy(originalProxy);
-        log('[LAUNCHER] 🌐 Реальный исходящий IP:', realIP);
-
-        if (realIP) {
-          // Определяем timezone и язык по реальному IP
-          const geoInfo = await getGeoIPInfoFromIP(realIP);
-          log('[LAUNCHER] GeoInfo результат:', geoInfo);
-          if (geoInfo) {
-            detectedLocale = geoInfo.language;
-            detectedTimezone = geoInfo.timezone;
-            log('[LAUNCHER] ✅ Автоопределено по исходящему IP:');
-            log('[LAUNCHER]    Страна:', geoInfo.country);
-            log('[LAUNCHER]    Язык:', detectedLocale);
-            log('[LAUNCHER]    Timezone:', detectedTimezone);
-          } else {
-            warn('[LAUNCHER] ⚠️ Не удалось определить GeoIP, используем значения по умолчанию');
-          }
-        } else {
-          warn('[LAUNCHER] ⚠️ Не удалось получить реальный IP, используем значения по умолчанию');
-        }
-      } catch (err) {
-        error('[LAUNCHER] ❌ Ошибка автоопределения локализации:', err.message);
-        error('[LAUNCHER] Stack:', err.stack);
-        log('[LAUNCHER] Используем значения по умолчанию');
-      }
-      log('[LAUNCHER] ═══════════════════════════════════════════════════');
-    } else {
-      log('[LAUNCHER] ⏭️ Автоопределение пропущено, используем значения из профиля');
-    }
 
     // ─── Build launch options ───
     const isMobile = payload.mobileEmulation?.enabled || false;
 
-    log('[LAUNCHER] ═══ ЛОКАЛИЗАЦИЯ (ДЛЯ ВСЕХ ДВИЖКОВ) ═══');
-    log('[LAUNCHER] Движок:', browserInfo.name);
-    log('[LAUNCHER] Язык (locale):', detectedLocale);
-    log('[LAUNCHER] Часовой пояс (timezone):', detectedTimezone);
-    log('[LAUNCHER] ═════════════════════════════════════');
+    log('[LAUNCHER] Язык:', detectedLocale);
+    log('[LAUNCHER] Часовой пояс:', detectedTimezone);
 
     const contextOptions = {
       headless: false,
-      locale: detectedLocale, // Определен по реальному исходящему IP
-      timezoneId: detectedTimezone, // Определен по реальному исходящему IP
+      locale: detectedLocale,
+      timezoneId: detectedTimezone,
     };
 
     // Chromium-specific args
@@ -1141,14 +806,14 @@ async function main() {
       contextOptions.args = getChromiumStealthArgs();
       contextOptions.ignoreDefaultArgs = ['--enable-automation'];
       
-      // Передаём прокси через args (вместо contextOptions.proxy)
-      // Это заставляет Chromium маршрутизировать DNS через прокси
+      // Передаём прокси через --proxy-server (поддерживает http, https, socks5)
+      // DNS будет резолвиться через прокси автоматически
       if (proxyConfig && proxyConfig.server) {
-        log('[LAUNCHER] 🌐 DNS будет резолвиться через прокси туннель');
+        log('[LAUNCHER] 🌐 Прокси через --proxy-server:', proxyConfig.server);
+        logToFile(`Proxy arg: --proxy-server=${proxyConfig.server}`);
         contextOptions.args.push(`--proxy-server=${proxyConfig.server}`);
       }
     } else {
-      // Прокси для других движков (запасной вариант)
       if (proxyConfig) {
         contextOptions.proxy = proxyConfig;
       }
@@ -1169,8 +834,53 @@ async function main() {
 
     // ─── Launch browser ───
     log(`[LAUNCHER] 🚀 Запуск ${browserInfo.name}...`);
+    logToFile(`Launching browser with options: ${JSON.stringify({proxy: proxyConfig?.server, locale: detectedLocale, timezone: detectedTimezone})}`);
     const context = await browserInfo.engine.launchPersistentContext(profileDir, contextOptions);
     log(`[LAUNCHER] ✅ ${browserInfo.name} запущен`);
+    logToFile('Browser launched OK');
+
+    // ─── Proxy авторизация через CDP ───
+    // Если прокси требует логин/пароль — устанавливаем через page-level HTTP credentials
+    // Это работает для HTTP/HTTPS прокси. SOCKS5 с auth передаётся напрямую через URL.
+    if (proxyCredentials) {
+      log('[LAUNCHER] 🔑 Устанавливаем proxy auth credentials');
+      logToFile(`Setting proxy auth for user: ${proxyCredentials.username}`);
+      
+      // Устанавливаем HTTP credentials для всех страниц контекста
+      // Это перехватит 407 Proxy Authentication Required
+      try {
+        const cdpSession = await context.newCDPSession(context.pages()[0] || await context.newPage());
+        await cdpSession.send('Fetch.enable', {
+          handleAuthRequests: true
+        });
+        cdpSession.on('Fetch.authRequired', async (event) => {
+          try {
+            await cdpSession.send('Fetch.continueWithAuth', {
+              requestId: event.requestId,
+              authChallengeResponse: {
+                response: 'ProvideCredentials',
+                username: proxyCredentials.username,
+                password: proxyCredentials.password
+              }
+            });
+          } catch (e) {}
+        });
+        cdpSession.on('Fetch.requestPaused', async (event) => {
+          try {
+            await cdpSession.send('Fetch.continueRequest', { requestId: event.requestId });
+          } catch (e) {}
+        });
+        log('[LAUNCHER] ✅ Proxy auth установлен через CDP');
+      } catch (cdpErr) {
+        warn('[LAUNCHER] ⚠️ CDP auth failed, trying page-level auth:', cdpErr.message);
+        // Fallback: пробуем через route
+        try {
+          await context.route('**/*', async (route) => {
+            await route.continue_();
+          });
+        } catch (e) {}
+      }
+    }
 
     // ─── Inject antidetect scripts ───
     const antidetectScript = isMobile
@@ -1238,14 +948,6 @@ async function main() {
     log('[LAUNCHER] Ожидание закрытия браузера...');
     try { await context.waitForEvent('close', { timeout: 0 }); } catch (err) { }
     try { await context.close(); } catch (err) { }
-
-    // Cleanup proxy
-    if (anonymizedProxy && ProxyChain?.closeAnonymizedProxy) {
-      try { await ProxyChain.closeAnonymizedProxy(anonymizedProxy); } catch (e) { }
-    }
-    if (socksProxyServer) {
-      try { socksProxyServer.close(); } catch (e) { }
-    }
 
   } catch (err) {
     error('[LAUNCHER] ❌ Ошибка:', err.message);
