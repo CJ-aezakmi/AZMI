@@ -1,9 +1,103 @@
-// src-tauri/src/lib.rs — AEZAKMI Pro v3.0.0
+// src-tauri/src/lib.rs — AEZAKMI Pro v3.0.1
 
 use base64::Engine;
 use tauri::Manager;
 use std::sync::Mutex;
 use std::collections::HashMap;
+
+/// Возвращает путь к %LOCALAPPDATA%/AEZAKMI Pro/ — основная рабочая директория
+fn get_data_dir() -> Result<std::path::PathBuf, String> {
+    let local = std::env::var("LOCALAPPDATA")
+        .map_err(|_| "LOCALAPPDATA не найден".to_string())?;
+    Ok(std::path::PathBuf::from(local).join("AEZAKMI Pro"))
+}
+
+/// Распаковывает bundled playwright-core.zip в AppData при первом запуске.
+/// После распаковки: %LOCALAPPDATA%/AEZAKMI Pro/playwright/modules/playwright-core/
+fn ensure_playwright_ready() -> Result<(), String> {
+    let data_dir = get_data_dir()?;
+    let modules_dir = data_dir.join("playwright").join("modules");
+    let core_dir = modules_dir.join("playwright-core");
+    let marker = core_dir.join("package.json");
+    
+    // Уже распаковано — ничего не делаем
+    if marker.exists() {
+        println!("[SETUP] ✓ playwright-core уже установлен: {}", core_dir.display());
+        return Ok(());
+    }
+    
+    // Ищем bundled playwright-core.zip
+    let app_dir = get_app_dir()?;
+    let zip_path = app_dir.join("playwright").join("playwright-core.zip");
+    
+    if !zip_path.exists() {
+        // Dev mode: ищем в дереве проекта
+        if let Ok(exe) = std::env::current_exe() {
+            let mut dir = exe.as_path();
+            for _ in 0..6 {
+                if let Some(parent) = dir.parent() {
+                    let dev_zip = parent.join("src-tauri").join("playwright").join("playwright-core.zip");
+                    if dev_zip.exists() {
+                        return extract_playwright_zip(&dev_zip, &modules_dir);
+                    }
+                    let dev_zip2 = parent.join("playwright").join("playwright-core.zip");
+                    if dev_zip2.exists() {
+                        return extract_playwright_zip(&dev_zip2, &modules_dir);
+                    }
+                    dir = parent;
+                }
+            }
+        }
+        return Err(format!("playwright-core.zip не найден: {}", zip_path.display()));
+    }
+    
+    extract_playwright_zip(&zip_path, &modules_dir)
+}
+
+/// Распаковывает ZIP в целевую папку через PowerShell
+fn extract_playwright_zip(zip_path: &std::path::Path, modules_dir: &std::path::Path) -> Result<(), String> {
+    println!("[SETUP] Распаковка {} → {}", zip_path.display(), modules_dir.display());
+    
+    std::fs::create_dir_all(modules_dir)
+        .map_err(|e| format!("Не удалось создать {}: {}", modules_dir.display(), e))?;
+    
+    let ps_script = format!(
+        "Expand-Archive -Path '{}' -DestinationPath '{}' -Force",
+        zip_path.display(),
+        modules_dir.display()
+    );
+    
+    let output = std::process::Command::new("powershell")
+        .args(["-NoProfile", "-NonInteractive", "-Command", &ps_script])
+        .output()
+        .map_err(|e| format!("Ошибка PowerShell: {}", e))?;
+    
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!("Ошибка распаковки: {}", stderr.trim()));
+    }
+    
+    // Проверяем результат
+    let check = modules_dir.join("playwright-core").join("package.json");
+    if check.exists() {
+        println!("[SETUP] ✅ playwright-core распакован!");
+        Ok(())
+    } else {
+        // Может быть распаковалось с вложенной папкой — проверяем
+        let contents: Vec<String> = std::fs::read_dir(modules_dir).ok()
+            .map(|e| e.filter_map(|e| e.ok())
+                .map(|e| e.file_name().to_string_lossy().to_string())
+                .collect())
+            .unwrap_or_default();
+        Err(format!("playwright-core/package.json не найден после распаковки. Содержимое: {:?}", contents))
+    }
+}
+
+/// Возвращает путь к modules/ в AppData (для NODE_PATH)
+fn get_modules_dir() -> Result<std::path::PathBuf, String> {
+    let data_dir = get_data_dir()?;
+    Ok(data_dir.join("playwright").join("modules"))
+}
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -12,7 +106,13 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_shell::init())
         .setup(|app| {
-            println!("[STARTUP] AEZAKMI Pro v3.0.0");
+            println!("[STARTUP] AEZAKMI Pro v3.0.1");
+            
+            // Распаковываем playwright-core.zip в AppData при первом запуске
+            match ensure_playwright_ready() {
+                Ok(()) => println!("[STARTUP] ✓ Playwright готов"),
+                Err(e) => eprintln!("[STARTUP] ⚠ Playwright: {}", e),
+            }
             
             #[cfg(debug_assertions)]
             if let Some(window) = app.get_webview_window("main") {
@@ -129,26 +229,31 @@ fn get_enhanced_path() -> String {
 // HELPERS: NODE_PATH
 // ============================================================================
 
-/// Получает путь к NODE_PATH (для require('playwright'))
-/// Production: playwright/modules (Tauri исключает node_modules!)
-/// Dev: playwright/node_modules
+/// Получает путь к NODE_PATH (для require('playwright-core'))
+/// Приоритет: AppData modules → bundled modules → dev node_modules
 fn get_node_path() -> String {
     let mut paths = Vec::new();
     
+    // 1. AppData: %LOCALAPPDATA%/AEZAKMI Pro/playwright/modules/
+    if let Ok(modules) = get_modules_dir() {
+        if modules.exists() {
+            paths.push(modules.display().to_string());
+        }
+    }
+    
+    // 2. Bundled рядом с exe (fallback)
     if let Ok(app_dir) = get_app_dir() {
-        // Production: modules (переименовано из node_modules)
         let pw_modules = app_dir.join("playwright").join("modules");
         if pw_modules.exists() {
             paths.push(pw_modules.display().to_string());
         }
-        // Fallback: node_modules (если не переименовано)
         let pw_nm = app_dir.join("playwright").join("node_modules");
         if pw_nm.exists() {
             paths.push(pw_nm.display().to_string());
         }
     }
     
-    // Dev mode
+    // 3. Dev mode
     if let Ok(exe) = std::env::current_exe() {
         let mut dir = exe.as_path();
         for _ in 0..6 {
@@ -1126,30 +1231,32 @@ async fn install_playwright_browsers_cmd() -> Result<String, String> {
 /// Проверяет установлен ли Playwright (наличие пакета)
 #[tauri::command]
 async fn check_playwright_installed(_app: tauri::AppHandle) -> Result<bool, String> {
-    // Проверяем наличие playwright пакета в bundled
-    if let Ok(app_dir) = get_app_dir() {
-        // Production: modules/ (переименовано из node_modules)
-        let pw_check = app_dir.join("playwright").join("modules").join("playwright-core");
+    // 1. AppData: %LOCALAPPDATA%/AEZAKMI Pro/playwright/modules/playwright-core
+    if let Ok(modules) = get_modules_dir() {
+        let pw_check = modules.join("playwright-core").join("package.json");
         if pw_check.exists() {
-            println!("[CHECK] Playwright пакет найден (bundled/modules)");
-            return Ok(true);
-        }
-        // Fallback: node_modules/
-        let pw_check2 = app_dir.join("playwright").join("node_modules").join("playwright-core");
-        if pw_check2.exists() {
-            println!("[CHECK] Playwright пакет найден (bundled/node_modules)");
+            println!("[CHECK] Playwright найден в AppData");
             return Ok(true);
         }
     }
     
-    // Dev mode: ищем node_modules
+    // 2. Bundled рядом с exe
+    if let Ok(app_dir) = get_app_dir() {
+        let pw_check = app_dir.join("playwright").join("modules").join("playwright-core").join("package.json");
+        if pw_check.exists() {
+            println!("[CHECK] Playwright найден (bundled/modules)");
+            return Ok(true);
+        }
+    }
+    
+    // 3. Dev mode
     if let Ok(exe) = std::env::current_exe() {
         let mut dir = exe.as_path();
         for _ in 0..6 {
             if let Some(parent) = dir.parent() {
-                let pw_dev = parent.join("playwright").join("node_modules").join("playwright-core");
+                let pw_dev = parent.join("playwright").join("node_modules").join("playwright-core").join("package.json");
                 if pw_dev.exists() {
-                    println!("[CHECK] Playwright пакет найден (dev)");
+                    println!("[CHECK] Playwright найден (dev)");
                     return Ok(true);
                 }
                 dir = parent;
@@ -1283,42 +1390,40 @@ async fn stop_cookie_bot(profile_id: String) -> Result<String, String> {
 /// Получает версию Playwright
 #[tauri::command]
 async fn get_playwright_version(_app: tauri::AppHandle) -> Result<String, String> {
-    // Пробуем прочитать версию из bundled пакета
-    if let Ok(app_dir) = get_app_dir() {
-        // Production: modules/
-        let pkg_json = app_dir.join("playwright").join("modules").join("playwright").join("package.json");
-        // Fallback: node_modules/
-        let pkg_json2 = app_dir.join("playwright").join("node_modules").join("playwright").join("package.json");
-        
-        for pj in &[pkg_json, pkg_json2] {
-            if pj.exists() {
-                if let Ok(content) = std::fs::read_to_string(pj) {
-                    if let Ok(json) = serde_json::from_str::<serde_json::Value>(&content) {
-                        if let Some(version) = json.get("version").and_then(|v| v.as_str()) {
-                            return Ok(format!("Version {}", version));
-                        }
-                    }
-                }
-            }
-        }
+    // Список путей для проверки
+    let mut paths_to_check: Vec<std::path::PathBuf> = Vec::new();
+    
+    // 1. AppData
+    if let Ok(modules) = get_modules_dir() {
+        paths_to_check.push(modules.join("playwright-core").join("package.json"));
+        paths_to_check.push(modules.join("playwright").join("package.json"));
     }
     
-    // Dev mode: ищем в node_modules
+    // 2. Bundled
+    if let Ok(app_dir) = get_app_dir() {
+        paths_to_check.push(app_dir.join("playwright").join("modules").join("playwright-core").join("package.json"));
+        paths_to_check.push(app_dir.join("playwright").join("modules").join("playwright").join("package.json"));
+    }
+    
+    // 3. Dev mode
     if let Ok(exe) = std::env::current_exe() {
         let mut dir = exe.as_path();
         for _ in 0..6 {
             if let Some(parent) = dir.parent() {
-                let pj = parent.join("playwright").join("node_modules").join("playwright").join("package.json");
-                if pj.exists() {
-                    if let Ok(content) = std::fs::read_to_string(&pj) {
-                        if let Ok(json) = serde_json::from_str::<serde_json::Value>(&content) {
-                            if let Some(version) = json.get("version").and_then(|v| v.as_str()) {
-                                return Ok(format!("Version {}", version));
-                            }
-                        }
+                paths_to_check.push(parent.join("playwright").join("node_modules").join("playwright-core").join("package.json"));
+                dir = parent;
+            }
+        }
+    }
+    
+    for pj in &paths_to_check {
+        if pj.exists() {
+            if let Ok(content) = std::fs::read_to_string(pj) {
+                if let Ok(json) = serde_json::from_str::<serde_json::Value>(&content) {
+                    if let Some(version) = json.get("version").and_then(|v| v.as_str()) {
+                        return Ok(format!("Version {}", version));
                     }
                 }
-                dir = parent;
             }
         }
     }

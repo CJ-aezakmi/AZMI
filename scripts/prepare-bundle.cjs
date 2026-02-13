@@ -209,6 +209,41 @@ if (fs.existsSync(modulesDir)) {
 }
 
 // ============================================================
+// Шаг 2.5: Создаём playwright-core.zip
+// ВАЖНО: Tauri НЕ может правильно включить директории через resources!
+// Поэтому мы пакуем playwright-core в ZIP и распаковываем при первом запуске.
+// Один файл ZIP — гарантированно попадёт в установщик.
+// ============================================================
+console.log('\n📦 Шаг 2.5: Создание playwright-core.zip...');
+
+const playwrightCoreDir = path.join(modulesDir, 'playwright-core');
+const playwrightCoreZip = path.join(PLAYWRIGHT_DIR, 'playwright-core.zip');
+
+if (fs.existsSync(playwrightCoreDir)) {
+  // Удаляем старый ZIP если есть
+  if (fs.existsSync(playwrightCoreZip)) {
+    fs.unlinkSync(playwrightCoreZip);
+  }
+  
+  try {
+    // Используем PowerShell Compress-Archive для создания ZIP
+    execSync(
+      `powershell -NoProfile -NonInteractive -Command "Compress-Archive -Path '${playwrightCoreDir}' -DestinationPath '${playwrightCoreZip}' -Force"`,
+      { stdio: 'inherit', timeout: 120000 }
+    );
+    
+    const zipSize = (fs.statSync(playwrightCoreZip).size / (1024 * 1024)).toFixed(1);
+    console.log(`   ✅ playwright-core.zip создан (${zipSize} MB)`);
+  } catch (err) {
+    console.error('   ❌ Ошибка создания ZIP:', err.message);
+    process.exit(1);
+  }
+} else {
+  console.error('   ❌ playwright-core не найден:', playwrightCoreDir);
+  process.exit(1);
+}
+
+// ============================================================
 // Шаг 3: Убираем npm/npx/node_modules из node/
 // В установщик попадёт ТОЛЬКО node.exe (~70 MB)
 // ============================================================
@@ -327,7 +362,7 @@ if (fs.existsSync(launchScript)) {
 const criticalFiles = [
   path.join(NODE_DIR, 'node.exe'),
   path.join(PLAYWRIGHT_DIR, 'chromium-info.json'),
-  path.join(PLAYWRIGHT_DIR, 'modules', 'playwright-core', 'cli.js'),
+  path.join(PLAYWRIGHT_DIR, 'playwright-core.zip'),
   path.join(SCRIPTS_DIR, 'launch_playwright.cjs'),
 ];
 console.log('\n🔍 Проверка критичных файлов:');

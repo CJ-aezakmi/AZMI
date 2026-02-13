@@ -58,22 +58,27 @@ log('[LAUNCHER] Кеш существует:', fs.existsSync(browserCachePath));
 
 // ─── LOAD PLAYWRIGHT ──────────────────────────────────────────────────
 // ВАЖНО: загружаем playwright-core НАПРЯМУЮ по абсолютному пути!
-// Раньше require('playwright') делал require('playwright-core') без пути,
-// и Node.js мог найти НЕПРАВИЛЬНУЮ версию playwright-core из node_modules/
-// вместо нашей bundled версии из modules/.
+// v3.0.1: playwright-core теперь в %LOCALAPPDATA%/AEZAKMI Pro/playwright/modules/
+// (распаковывается из ZIP при первом запуске Rust-кодом)
+const localAppData = process.env.LOCALAPPDATA || '';
+const appDataModules = localAppData ? path.join(localAppData, 'AEZAKMI Pro', 'playwright', 'modules') : '';
+
 const playwrightCorePaths = [
-  path.join(appDir, 'playwright', 'modules', 'playwright-core'),       // Production: modules/
+  // v3.0.1: AppData (основной путь в production!)
+  appDataModules ? path.join(appDataModules, 'playwright-core') : '',
+  path.join(appDir, 'playwright', 'modules', 'playwright-core'),       // Bundled fallback
   path.join(appDir, 'playwright', 'node_modules', 'playwright-core'),  // Dev/fallback
   path.join(appDir, 'node_modules', 'playwright-core'),                // Alt fallback
-];
+].filter(Boolean);
 
 // Также пробуем playwright (wrapper), но только если прямой путь к core не сработал
 const playwrightWrapperPaths = [
+  appDataModules ? path.join(appDataModules, 'playwright') : '',
   path.join(appDir, 'playwright', 'modules', 'playwright'),
   path.join(appDir, 'playwright', 'node_modules', 'playwright'),
   path.join(appDir, 'node_modules', 'playwright'),
   'playwright'
-];
+].filter(Boolean);
 
 let playwright = null;
 
