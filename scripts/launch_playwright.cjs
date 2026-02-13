@@ -17,6 +17,40 @@ const log = isDev ? console.log.bind(console) : () => {};
 const warn = isDev ? console.warn.bind(console) : () => {};
 const error = console.error.bind(console); // Errors всегда показываем
 
+// ─── PRODUCTION ERROR LOG ─────────────────────────────────────────────
+// В production пишем ошибки в файл (stderr может быть потерян)
+const logFilePath = (() => {
+  const localAppData = process.env.LOCALAPPDATA || '';
+  if (localAppData) {
+    const logDir = path.join(localAppData, 'AEZAKMI Pro', 'logs');
+    try { fs.mkdirSync(logDir, { recursive: true }); } catch (e) {}
+    return path.join(logDir, 'launcher.log');
+  }
+  return null;
+})();
+
+function logToFile(msg) {
+  if (!logFilePath) return;
+  try {
+    const ts = new Date().toISOString();
+    fs.appendFileSync(logFilePath, `[${ts}] ${msg}\n`);
+  } catch (e) {}
+}
+
+// Перехватываем все необработанные ошибки
+process.on('uncaughtException', (err) => {
+  const msg = `UNCAUGHT EXCEPTION: ${err.message}\n${err.stack}`;
+  error(msg);
+  logToFile(msg);
+  process.exit(1);
+});
+process.on('unhandledRejection', (reason) => {
+  const msg = `UNHANDLED REJECTION: ${reason}`;
+  error(msg);
+  logToFile(msg);
+  process.exit(1);
+});
+
 // ─── PATH RESOLUTION ──────────────────────────────────────────────────
 const scriptDir = __dirname;
 const appDir = path.dirname(scriptDir);
@@ -875,7 +909,27 @@ async function main() {
     // Ensure browser is installed
     await ensureBrowserInstalled(browserInfo);
 
-    const profileDir = payload.profileDir || `./aezakmi-profile-${Date.now()}`;
+    // ─── RESOLVE PROFILE DIRECTORY ───
+    // КРИТИЧЕСКИ ВАЖНО: profileDir ДОЛЖЕН быть абсолютным путём в ЗАПИСЫВАЕМОЙ папке!
+    // C:\Program Files\ — НЕ записываема без админ прав!
+    // Поэтому всегда резолвим в %LOCALAPPDATA%\AEZAKMI Pro\profiles\<name>
+    let profileDir = payload.profileDir || `aezakmi-profile-${Date.now()}`;
+    
+    if (!path.isAbsolute(profileDir)) {
+      // Резолвим в AppData (записываемая директория)
+      const profilesBase = process.env.AEZAKMI_PROFILES_DIR 
+        || (process.env.LOCALAPPDATA 
+          ? path.join(process.env.LOCALAPPDATA, 'AEZAKMI Pro', 'profiles')
+          : path.join(appDir, 'profiles'));
+      
+      profileDir = path.join(profilesBase, profileDir);
+    }
+    
+    // Создаём директорию если не существует
+    try { fs.mkdirSync(profileDir, { recursive: true }); } catch (e) {}
+    
+    log('[LAUNCHER] 📁 Профиль:', profileDir);
+    logToFile(`Profile dir: ${profileDir}`);
 
     // Домашняя страница: Google по умолчанию (максимальная стабильность через прокси)
     let url = payload.url || 'https://www.google.com';
@@ -1195,6 +1249,7 @@ async function main() {
 
   } catch (err) {
     error('[LAUNCHER] ❌ Ошибка:', err.message);
+    logToFile(`ERROR: ${err.message}\n${err.stack}`);
     process.exit(1);
   }
 }

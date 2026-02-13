@@ -1,4 +1,4 @@
-// src-tauri/src/lib.rs — AEZAKMI Pro v3.0.1
+// src-tauri/src/lib.rs — AEZAKMI Pro v3.0.2
 
 use base64::Engine;
 use tauri::Manager;
@@ -106,7 +106,7 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_shell::init())
         .setup(|app| {
-            println!("[STARTUP] AEZAKMI Pro v3.0.1");
+            println!("[STARTUP] AEZAKMI Pro v3.0.2");
             
             // Распаковываем playwright-core.zip в AppData при первом запуске
             match ensure_playwright_ready() {
@@ -288,6 +288,12 @@ fn open_profile(_app: tauri::AppHandle, app_path: String, args: String) -> Resul
     let node_path_env = get_node_path();
     let enhanced_path = get_enhanced_path();
     
+    // Директория профилей — в AppData (записываемая, в отличие от Program Files!)
+    let data_dir = get_data_dir()?;
+    let profiles_dir = data_dir.join("profiles");
+    std::fs::create_dir_all(&profiles_dir)
+        .map_err(|e| format!("Не удалось создать директорию профилей: {}", e))?;
+    
     // Находим скрипт
     let app_dir = get_app_dir()?;
     let mut script_path = app_dir.join("scripts").join(script_name);
@@ -316,15 +322,18 @@ fn open_profile(_app: tauri::AppHandle, app_path: String, args: String) -> Resul
     println!("[LAUNCH] Node: {:?}", node_exe);
     println!("[LAUNCH] Script: {:?}", script_path);
     println!("[LAUNCH] Cache: {:?}", cache_dir);
+    println!("[LAUNCH] Profiles: {:?}", profiles_dir);
     
     let mut cmd = Command::new(&node_exe);
     cmd.arg(&script_path)
        .arg(format!("--payload={}", payload_b64))
        .env("PLAYWRIGHT_BROWSERS_PATH", &cache_dir)
        .env("NODE_PATH", &node_path_env)
-       .env("PATH", &enhanced_path);
+       .env("PATH", &enhanced_path)
+       .env("AEZAKMI_PROFILES_DIR", &profiles_dir)
+       .current_dir(&profiles_dir); // CWD = записываемая папка!
     
-    // В PROD режиме скрываем консоль
+    // В PROD режиме скрываем консоль, но сохраняем stderr в лог
     #[cfg(all(not(debug_assertions), target_os = "windows"))]
     {
         use std::os::windows::process::CommandExt;

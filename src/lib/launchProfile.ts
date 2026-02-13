@@ -37,9 +37,10 @@ function generateUserAgent(profile: Profile): string {
  */
 export async function launchProfile(profile: Profile) {
   try {
-    // Генерируем уникальную директорию профиля
-    const timestamp = Date.now();
-    const profileDir = `aezakmi-profile-${profile.id}-${timestamp}`;
+    // Директория профиля — ПОСТОЯННАЯ для каждого profile.id
+    // (чтобы cookies, localStorage и история сохранялись между сессиями)
+    // ВАЖНО: НЕ добавляем timestamp — иначе каждый запуск = новый профиль
+    const profileDir = `aezakmi-profile-${profile.id}`;
 
     // Генерируем или используем существующий User-Agent
     const userAgent = generateUserAgent(profile);
