@@ -13,6 +13,8 @@ release/
 # Bundle directory (large files, generated before build)
 bundle/
 src-tauri/playwright-cache/
+src-tauri/playwright/modules/.bin/
+src-tauri/playwright/modules/.package-lock.json
 
 # Rust
 target/

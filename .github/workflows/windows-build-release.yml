@@ -8,9 +8,6 @@ on:
 permissions:
   contents: write
 
-env:
-  APP_VERSION: '2.2.6'
-
 jobs:
   build-windows:
     name: Build AEZAKMI Pro
@@ -19,6 +16,15 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Read version from tauri.conf.json
+        id: version
+        shell: pwsh
+        run: |
+          $conf = Get-Content "src-tauri/tauri.conf.json" | ConvertFrom-Json
+          $ver = $conf.version
+          echo "APP_VERSION=$ver" >> $env:GITHUB_ENV
+          echo "Version: $ver"
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -59,12 +65,11 @@ jobs:
 
             ## Что нового
 
-            - ✅ Node.js теперь **встроен** в установщик (не нужно устанавливать отдельно!)
-            - ✅ Chromium браузер **автоматически** загружается при первом запуске
-            - ✅ Только Chromium — удалены Firefox/Camoufox/WebKit
+            - ✅ Node.js **встроен** в установщик
+            - ✅ Playwright модули корректно включены в сборку
+            - ✅ Chromium браузер автоматически загружается при первом запуске
+            - ✅ Профили запускаются сразу после установки
             - ✅ Импорт куки (JSON/TXT) в профили
-            - ✅ Исправлены пути к ресурсам (логотипы, скрипты)
-            - ✅ Исправлена кнопка удаления профиля
 
             ## Установка
 

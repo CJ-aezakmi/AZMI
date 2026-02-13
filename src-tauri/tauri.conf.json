@@ -1,6 +1,6 @@
 {
   "productName": "AEZAKMI",
-  "version": "2.2.9",
+  "version": "3.0.0",
   "identifier": "com.aezakmi.antidetect",
   "build": {
     "beforeDevCommand": "pnpm dev",
@@ -39,14 +39,13 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ],
-    "resources": {
-      "node/node.exe": "node/node.exe",
-      "scripts/*": "scripts/",
-      "playwright/chromium-info.json": "playwright/chromium-info.json",
-      "playwright/package.json": "playwright/package.json",
-      "playwright/modules/**": "playwright/modules",
-      "playwright-cache/**": "playwright-cache"
-    },
+    "resources": [
+      "node/node.exe",
+      "scripts/",
+      "playwright/chromium-info.json",
+      "playwright/package.json",
+      "playwright/modules/"
+    ],
     "windows": {
       "certificateThumbprint": null,
       "digestAlgorithm": "sha256",

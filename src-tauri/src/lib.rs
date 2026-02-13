@@ -1,4 +1,4 @@
-// src-tauri/src/lib.rs — AEZAKMI Pro v2.2.6
+// src-tauri/src/lib.rs — AEZAKMI Pro v3.0.0
 
 use base64::Engine;
 use tauri::Manager;
@@ -12,12 +12,7 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_shell::init())
         .setup(|app| {
-            println!("[STARTUP] AEZAKMI Pro v2.2.9 (BUNDLED BROWSERS)");
-            
-            // Копируем bundled modules при первом запуске
-            if let Err(e) = ensure_playwright_modules_exists() {
-                eprintln!("[MODULES] ВНИМАНИЕ: {}", e);
-            }
+            println!("[STARTUP] AEZAKMI Pro v3.0.0");
             
             #[cfg(debug_assertions)]
             if let Some(window) = app.get_webview_window("main") {
@@ -130,124 +125,6 @@ fn get_enhanced_path() -> String {
 }
 
 // ============================================================================
-// BUNDLED CACHE: Копирование браузеров из установщика
-// ============================================================================
-
-/// Рекурсивное копирование директории
-fn copy_dir_all(src: &std::path::Path, dst: &std::path::Path) -> Result<(), String> {
-    std::fs::create_dir_all(&dst)
-        .map_err(|e| format!("Ошибка создания {}: {}", dst.display(), e))?;
-    
-    for entry in std::fs::read_dir(src)
-        .map_err(|e| format!("Ошибка чтения {}: {}", src.display(), e))? 
-    {
-        let entry = entry.map_err(|e| e.to_string())?;
-        let ty = entry.file_type().map_err(|e| e.to_string())?;
-        let src_path = entry.path();
-        let dst_path = dst.join(entry.file_name());
-        
-        if ty.is_dir() {
-            copy_dir_all(&src_path, &dst_path)?;
-        } else {
-            std::fs::copy(&src_path, &dst_path)
-                .map_err(|e| format!("Ошибка копирования {}: {}", src_path.display(), e))?;
-        }
-    }
-    Ok(())
-}
-
-/// Копирует bundled браузеры (из playwright-cache/) в AppData кеш
-fn copy_bundled_browsers_to_cache() -> Result<String, String> {
-    let app_dir = get_app_dir()?;
-    let bundled_cache = app_dir.join("playwright-cache");
-    
-    if !bundled_cache.exists() {
-        return Err(format!("Bundled cache НЕ найден: {}", bundled_cache.display()));
-    }
-    
-    let target_cache = get_playwright_cache_dir()?;
-    
-    // Создаем AppData кеш если не существует
-    if !target_cache.exists() {
-        std::fs::create_dir_all(&target_cache)
-            .map_err(|e| format!("Ошибка создания кеша: {}", e))?;
-        println!("[BUNDLED] Создан кеш: {}", target_cache.display());
-    }
-    
-    println!("[BUNDLED] Копирование из {} → {}", bundled_cache.display(), target_cache.display());
-    
-    let mut copied_count = 0;
-    let mut skipped_count = 0;
-    
-    // Копируем все поддиректории
-    for entry in std::fs::read_dir(&bundled_cache)
-        .map_err(|e| format!("Ошибка чтения bundled cache: {}", e))? 
-    {
-        let entry = entry.map_err(|e| e.to_string())?;
-        let src = entry.path();
-        if !src.is_dir() {
-            continue;
-        }
-        
-        let dir_name = src.file_name().ok_or("Нет имени директории")?.to_string_lossy();
-        let dest = target_cache.join(dir_name.as_ref());
-        
-        if dest.exists() {
-            println!("[BUNDLED] ✓ Уже есть: {}", dir_name);
-            skipped_count += 1;
-            continue;
-        }
-        
-        println!("[BUNDLED] Копирование: {}", dir_name);
-        copy_dir_all(&src, &dest)?;
-        copied_count += 1;
-    }
-    
-    Ok(format!("Bundled браузеры: скопировано {}, пропущено {}", copied_count, skipped_count))
-}
-
-/// Копирует bundled modules/ (playwright-core) в AppData
-fn ensure_playwright_modules_exists() -> Result<(), String> {
-    use std::env;
-    
-    // Целевая директория - AppData/AEZAKMI Pro/playwright/modules
-    let local_app_data = env::var("LOCALAPPDATA")
-        .map_err(|_| "LOCALAPPDATA не найден".to_string())?;
-    
-    let target_modules = std::path::PathBuf::from(&local_app_data)
-        .join("AEZAKMI Pro")
-        .join("playwright")
-        .join("modules");
-    
-    // Проверяем - может уже скопировано
-    let playwright_core_pkg = target_modules.join("playwright-core").join("package.json");
-    if playwright_core_pkg.exists() {
-        println!("[MODULES] ✓ Уже установлены: {}", target_modules.display());
-        return Ok(());
-    }
-    
-    // Копируем из bundled
-    let app_dir = get_app_dir()?;
-    let bundled_modules = app_dir.join("playwright").join("modules");
-    
-    if !bundled_modules.exists() {
-        return Err(format!("Bundled modules не найдены: {}", bundled_modules.display()));
-    }
-    
-    println!("[MODULES] Копирование из {} → {}", bundled_modules.display(), target_modules.display());
-    
-    // Создаем target директорию
-    if let Some(parent) = target_modules.parent() {
-        std::fs::create_dir_all(parent)
-            .map_err(|e| format!("Ошибка создания {}: {}", parent.display(), e))?;
-    }
-    
-    copy_dir_all(&bundled_modules, &target_modules)?;
-    
-    println!("[MODULES] ✅ Playwright modules установлены!");
-    Ok(())
-}
-
 // ============================================================================
 // HELPERS: NODE_PATH
 // ============================================================================
@@ -1064,45 +941,6 @@ async fn install_playwright_browsers_cmd() -> Result<String, String> {
     use futures_util::StreamExt;
     
     println!("[BROWSERS] ========= Установка компонентов =========");
-    
-    // ШАГ 1: Сначала пытаемся скопировать из bundled cache
-    if let Ok(app_dir) = get_app_dir() {
-        let bundled_cache = app_dir.join("playwright-cache");
-        if bundled_cache.exists() {
-            println!("[BROWSERS] ✓ Найден bundled cache: {}", bundled_cache.display());
-            match copy_bundled_browsers_to_cache() {
-                Ok(msg) => {
-                    println!("[BROWSERS] {}", msg);
-                    // Проверяем что ВСЕ компоненты скопированы
-                    let cache_dir = get_playwright_cache_dir()?;
-                    let components = get_browser_components().unwrap_or_default();
-                    let mut all_ok = true;
-                    
-                    for comp in &components {
-                        let comp_dir = cache_dir.join(&comp.dir_name);
-                        if !comp_dir.exists() {
-                            println!("[BROWSERS] ✗ Компонент {} не скопирован", comp.name);
-                            all_ok = false;
-                        }
-                    }
-                    
-                    if all_ok {
-                        return Ok(format!("Браузеры установлены из bundled cache ({})", components.len()));
-                    } else {
-                        println!("[BROWSERS] Не все компоненты скопированы — переход к загрузке");
-                    }
-                }
-                Err(e) => {
-                    println!("[BROWSERS] Ошибка копирования bundled cache: {}", e);
-                }
-            }
-        } else {
-            println!("[BROWSERS] Bundled cache не найден — будем скачивать");
-        }
-    }
-    
-    // ШАГ 2: Если bundled нет или копирование не удалось — скачиваем
-    println!("[BROWSERS] Переход к загрузке компонентов...");
     
     // Получаем путь к playwright-cache
     let cache_dir = get_playwright_cache_dir()?;

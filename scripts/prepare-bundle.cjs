@@ -166,37 +166,6 @@ if (!fs.existsSync(playwrightCoreCheck)) {
       console.log('   ✅ node_modules → modules (обход ограничения Tauri)');
     }
 
-    // *** Удаляем .bin/ (содержит symlinks → ломает Tauri bundling) ***
-    const binDir = path.join(modulesDir, '.bin');
-    if (fs.existsSync(binDir)) {
-      fs.rmSync(binDir, { recursive: true, force: true });
-      console.log('   ✅ Удалён modules/.bin/ (symlinks)');
-    }
-
-    // *** Удаляем вложенные node_modules/ внутри modules/ ***
-    // Tauri исключает ВСЕ папки с именем node_modules на любом уровне!
-    function removeNestedNodeModules(dir) {
-      if (!fs.existsSync(dir)) return;
-      for (const item of fs.readdirSync(dir)) {
-        const fullPath = path.join(dir, item);
-        if (!fs.statSync(fullPath).isDirectory()) continue;
-        if (item === 'node_modules') {
-          fs.rmSync(fullPath, { recursive: true, force: true });
-          console.log(`   ✅ Удалён вложенный: ${path.relative(PLAYWRIGHT_DIR, fullPath)}`);
-        } else {
-          removeNestedNodeModules(fullPath);
-        }
-      }
-    }
-    removeNestedNodeModules(modulesDir);
-
-    // *** Удаляем .package-lock.json (не нужен в production) ***
-    const pkgLock = path.join(modulesDir, '.package-lock.json');
-    if (fs.existsSync(pkgLock)) {
-      fs.unlinkSync(pkgLock);
-      console.log('   ✅ Удалён .package-lock.json');
-    }
-
     console.log('   ✅ Playwright пакет готов');
   } catch (error) {
     console.error('   ❌ Ошибка установки Playwright:', error.message);
@@ -204,6 +173,39 @@ if (!fs.existsSync(playwrightCoreCheck)) {
   }
 } else {
   console.log('   ✅ Playwright пакет уже установлен');
+}
+
+// *** ВСЕГДА чистим modules/ от мусора (даже если уже был установлен из git) ***
+if (fs.existsSync(modulesDir)) {
+  // Удаляем .bin/ (содержит symlinks → ломает Tauri bundling)
+  const binDir = path.join(modulesDir, '.bin');
+  if (fs.existsSync(binDir)) {
+    fs.rmSync(binDir, { recursive: true, force: true });
+    console.log('   ✅ Удалён modules/.bin/ (symlinks)');
+  }
+
+  // Удаляем вложенные node_modules/ внутри modules/
+  function removeNestedNodeModules(dir) {
+    if (!fs.existsSync(dir)) return;
+    for (const item of fs.readdirSync(dir)) {
+      const fullPath = path.join(dir, item);
+      if (!fs.statSync(fullPath).isDirectory()) continue;
+      if (item === 'node_modules') {
+        fs.rmSync(fullPath, { recursive: true, force: true });
+        console.log(`   ✅ Удалён вложенный: ${path.relative(PLAYWRIGHT_DIR, fullPath)}`);
+      } else {
+        removeNestedNodeModules(fullPath);
+      }
+    }
+  }
+  removeNestedNodeModules(modulesDir);
+
+  // Удаляем .package-lock.json (не нужен в production)
+  const pkgLock = path.join(modulesDir, '.package-lock.json');
+  if (fs.existsSync(pkgLock)) {
+    fs.unlinkSync(pkgLock);
+    console.log('   ✅ Удалён .package-lock.json');
+  }
 }
 
 // ============================================================
