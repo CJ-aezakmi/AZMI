@@ -805,18 +805,21 @@ async function main() {
     if (browserInfo.isChromium) {
       contextOptions.args = getChromiumStealthArgs();
       contextOptions.ignoreDefaultArgs = ['--enable-automation'];
-      
-      // Передаём прокси через --proxy-server (поддерживает http, https, socks5)
-      // DNS будет резолвиться через прокси автоматически
-      if (proxyConfig && proxyConfig.server) {
-        log('[LAUNCHER] 🌐 Прокси через --proxy-server:', proxyConfig.server);
-        logToFile(`Proxy arg: --proxy-server=${proxyConfig.server}`);
-        contextOptions.args.push(`--proxy-server=${proxyConfig.server}`);
+    }
+
+    // Прокси через Playwright native proxy option
+    // Это единственный правильный способ: Playwright сам обработает auth для HTTP и SOCKS
+    // --proxy-server НЕ поддерживает SOCKS auth, CDP Fetch.authRequired НЕ работает для SOCKS
+    if (proxyConfig) {
+      contextOptions.proxy = {
+        server: proxyConfig.server,
+      };
+      if (proxyCredentials) {
+        contextOptions.proxy.username = proxyCredentials.username;
+        contextOptions.proxy.password = proxyCredentials.password;
       }
-    } else {
-      if (proxyConfig) {
-        contextOptions.proxy = proxyConfig;
-      }
+      log('[LAUNCHER] 🌐 Прокси через Playwright native:', proxyConfig.server, proxyCredentials ? '(с авторизацией)' : '(без авторизации)');
+      logToFile(`Proxy: ${proxyConfig.server}, auth: ${!!proxyCredentials}`);
     }
 
     // Mobile emulation via Playwright context
@@ -838,49 +841,6 @@ async function main() {
     const context = await browserInfo.engine.launchPersistentContext(profileDir, contextOptions);
     log(`[LAUNCHER] ✅ ${browserInfo.name} запущен`);
     logToFile('Browser launched OK');
-
-    // ─── Proxy авторизация через CDP ───
-    // Если прокси требует логин/пароль — устанавливаем через page-level HTTP credentials
-    // Это работает для HTTP/HTTPS прокси. SOCKS5 с auth передаётся напрямую через URL.
-    if (proxyCredentials) {
-      log('[LAUNCHER] 🔑 Устанавливаем proxy auth credentials');
-      logToFile(`Setting proxy auth for user: ${proxyCredentials.username}`);
-      
-      // Устанавливаем HTTP credentials для всех страниц контекста
-      // Это перехватит 407 Proxy Authentication Required
-      try {
-        const cdpSession = await context.newCDPSession(context.pages()[0] || await context.newPage());
-        await cdpSession.send('Fetch.enable', {
-          handleAuthRequests: true
-        });
-        cdpSession.on('Fetch.authRequired', async (event) => {
-          try {
-            await cdpSession.send('Fetch.continueWithAuth', {
-              requestId: event.requestId,
-              authChallengeResponse: {
-                response: 'ProvideCredentials',
-                username: proxyCredentials.username,
-                password: proxyCredentials.password
-              }
-            });
-          } catch (e) {}
-        });
-        cdpSession.on('Fetch.requestPaused', async (event) => {
-          try {
-            await cdpSession.send('Fetch.continueRequest', { requestId: event.requestId });
-          } catch (e) {}
-        });
-        log('[LAUNCHER] ✅ Proxy auth установлен через CDP');
-      } catch (cdpErr) {
-        warn('[LAUNCHER] ⚠️ CDP auth failed, trying page-level auth:', cdpErr.message);
-        // Fallback: пробуем через route
-        try {
-          await context.route('**/*', async (route) => {
-            await route.continue_();
-          });
-        } catch (e) {}
-      }
-    }
 
     // ─── Inject antidetect scripts ───
     const antidetectScript = isMobile
