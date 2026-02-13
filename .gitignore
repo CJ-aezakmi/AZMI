@@ -12,6 +12,7 @@ release/
 
 # Bundle directory (large files, generated before build)
 bundle/
+src-tauri/playwright-cache/
 
 # Rust
 target/

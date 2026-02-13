@@ -1,6 +1,6 @@
 {
   "productName": "AEZAKMI",
-  "version": "2.2.8",
+  "version": "2.2.9",
   "identifier": "com.aezakmi.antidetect",
   "build": {
     "beforeDevCommand": "pnpm dev",
@@ -44,7 +44,8 @@
       "scripts/*": "scripts/",
       "playwright/chromium-info.json": "playwright/chromium-info.json",
       "playwright/package.json": "playwright/package.json",
-      "playwright/modules/**": "playwright/modules"
+      "playwright/modules/**": "playwright/modules",
+      "playwright-cache/**": "playwright-cache"
     },
     "windows": {
       "certificateThumbprint": null,
