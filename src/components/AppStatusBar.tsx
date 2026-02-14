@@ -1,11 +1,10 @@
 import { useState, useEffect, useCallback } from 'react';
-import { invoke } from '@tauri-apps/api/core';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
-import { X, Download, CheckCircle, RefreshCw, AlertTriangle, Loader2 } from 'lucide-react';
+import { X, Download, CheckCircle, AlertTriangle, Loader2 } from 'lucide-react';
 import { checkForUpdates, shouldAutoCheck, setLastUpdateCheck, isAutoUpdateEnabled, getCurrentVersion, downloadUpdate, installUpdate, UpdateInfo } from '@/lib/updater';
 
-type BarMode = 'hidden' | 'checking' | 'update-available' | 'updating' | 'components' | 'up-to-date' | 'error';
+type BarMode = 'hidden' | 'checking' | 'update-available' | 'updating' | 'up-to-date' | 'error';
 
 const AppStatusBar = () => {
     const [mode, setMode] = useState<BarMode>('hidden');
@@ -14,7 +13,22 @@ const AppStatusBar = () => {
     const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null);
     const [dismissed, setDismissed] = useState(false);
 
-    // Проверка обновлений программы
+    // Listen for download progress events from Rust backend
+    useEffect(() => {
+        if (mode !== 'updating') return;
+        let unlisten: (() => void) | null = null;
+        (async () => {
+            try {
+                const { listen } = await import('@tauri-apps/api/event');
+                unlisten = await listen<{ percent: number }>('update-progress', (event) => {
+                    setProgress(event.payload.percent);
+                });
+            } catch (e) { /* ignore */ }
+        })();
+        return () => { if (unlisten) unlisten(); };
+    }, [mode]);
+
+    // Проверка обновлений программы (без проверки Playwright компонентов)
     const checkUpdates = useCallback(async () => {
         if (!isAutoUpdateEnabled() || !shouldAutoCheck()) return;
 
@@ -30,53 +44,18 @@ const AppStatusBar = () => {
                 setMode('update-available');
                 setMessage(`Доступна новая версия v${update.version}`);
             } else {
-                // Проверяем компоненты
-                await checkComponentUpdates();
+                setMode('up-to-date');
+                setMessage('Версия актуальна — v' + getCurrentVersion());
+                // Автоскрытие через 5 сек
+                setTimeout(() => {
+                    setMode(prev => prev === 'up-to-date' ? 'hidden' : prev);
+                }, 5000);
             }
         } catch {
             // Не критичная ошибка — просто скрываем бар
-            await checkComponentUpdates();
+            setMode('hidden');
         }
     }, []);
-
-    // Проверка обновлений компонентов (браузеров)
-    const checkComponentUpdates = async () => {
-        try {
-            const browsersOk = await invoke<boolean>('check_browsers_installed');
-
-            if (!browsersOk) {
-                setMode('components');
-                setMessage('Обновление компонентов браузера...');
-                setProgress(0);
-
-                try {
-                    await invoke<string>('install_playwright_browsers_cmd');
-                    setProgress(100);
-                    setMessage('Компоненты обновлены!');
-                } catch {
-                    // Не критично — браузер может работать и без обновления
-                    console.warn('Browser component update skipped');
-                }
-
-                setTimeout(() => {
-                    setMode('up-to-date');
-                    setMessage('Версия актуальна — v' + getCurrentVersion());
-                }, 2000);
-            } else {
-                setMode('up-to-date');
-                setMessage('Версия актуальна — v' + getCurrentVersion());
-            }
-        } catch {
-            // Ошибка проверки компонентов — не показываем ошибку пользователю
-            setMode('up-to-date');
-            setMessage('Версия актуальна — v' + getCurrentVersion());
-        }
-
-        // Автоскрытие через 5 сек если всё ок
-        setTimeout(() => {
-            setMode(prev => prev === 'up-to-date' ? 'hidden' : prev);
-        }, 5000);
-    };
 
     // Скачивание и установка обновления
     const handleUpdate = async () => {
@@ -87,9 +66,7 @@ const AppStatusBar = () => {
         setProgress(0);
 
         try {
-            const installerPath = await downloadUpdate(updateInfo.downloadUrl, (percent) => {
-                setProgress(percent);
-            });
+            const installerPath = await downloadUpdate(updateInfo.downloadUrl);
 
             setMessage('Запуск установщика...');
             await installUpdate(installerPath);
@@ -117,7 +94,6 @@ const AppStatusBar = () => {
         checking: { bg: 'bg-blue-600', icon: <Loader2 className="w-4 h-4 animate-spin" /> },
         'update-available': { bg: 'bg-amber-600', icon: <Download className="w-4 h-4" /> },
         updating: { bg: 'bg-blue-600', icon: <Loader2 className="w-4 h-4 animate-spin" /> },
-        components: { bg: 'bg-indigo-600', icon: <RefreshCw className="w-4 h-4 animate-spin" /> },
         'up-to-date': { bg: 'bg-green-600', icon: <CheckCircle className="w-4 h-4" /> },
         error: { bg: 'bg-red-600', icon: <AlertTriangle className="w-4 h-4" /> },
     }[mode] || { bg: 'bg-gray-600', icon: null };
@@ -130,8 +106,8 @@ const AppStatusBar = () => {
             {/* Сообщение */}
             <span className="flex-1">{message}</span>
 
-            {/* Прогресс бар для скачивания/установки */}
-            {(mode === 'updating' || mode === 'components') && progress > 0 && (
+            {/* Прогресс бар для скачивания */}
+            {mode === 'updating' && progress > 0 && (
                 <div className="w-32">
                     <Progress value={progress} className="h-1.5" />
                 </div>
@@ -163,7 +139,7 @@ const AppStatusBar = () => {
             )}
 
             {/* Кнопка закрытия */}
-            {mode !== 'updating' && mode !== 'components' && (
+            {mode !== 'updating' && (
                 <button
                     onClick={handleDismiss}
                     className="hover:bg-white/20 rounded-full p-1 transition-colors"

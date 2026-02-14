@@ -1,4 +1,4 @@
-// src-tauri/src/lib.rs — AEZAKMI Pro v3.0.6
+// src-tauri/src/lib.rs — AEZAKMI Pro v3.0.7
 
 use base64::Engine;
 use tauri::Manager;
@@ -281,7 +281,7 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_shell::init())
         .setup(|app| {
-            println!("[STARTUP] AEZAKMI Pro v3.0.6");
+            println!("[STARTUP] AEZAKMI Pro v3.0.7");
             
             // Camoufox скачивается пользователем через UI при первом запуске
             // Playwright больше не используется
@@ -738,7 +738,7 @@ async fn check_and_install_playwright() -> Result<String, String> {
 
 /// Скачивает файл обновления с GitHub
 #[tauri::command]
-async fn download_update(url: String) -> Result<String, String> {
+async fn download_update(app: tauri::AppHandle, url: String) -> Result<String, String> {
     use std::io::Write;
     use futures_util::StreamExt;
     
@@ -752,7 +752,12 @@ async fn download_update(url: String) -> Result<String, String> {
     println!("[UPDATE] Путь сохранения: {:?}", file_path);
     
     // Скачиваем файл
-    let client = reqwest::Client::new();
+    let client = reqwest::Client::builder()
+        .connect_timeout(std::time::Duration::from_secs(30))
+        .timeout(std::time::Duration::from_secs(300))
+        .build()
+        .map_err(|e| format!("Ошибка HTTP клиента: {}", e))?;
+    
     let response = client
         .get(&url)
         .send()
@@ -763,13 +768,17 @@ async fn download_update(url: String) -> Result<String, String> {
         return Err(format!("HTTP ошибка: {}", response.status()));
     }
     
+    let total_size = response.content_length().unwrap_or(0);
+    println!("[UPDATE] Размер файла: {} bytes", total_size);
+    
     // Создаем файл
     let mut file = std::fs::File::create(&file_path)
         .map_err(|e| format!("Не удалось создать файл: {}", e))?;
     
-    // Скачиваем по частям
+    // Скачиваем по частям с прогрессом
     let mut stream = response.bytes_stream();
     let mut downloaded: u64 = 0;
+    let mut last_percent: u64 = 0;
     
     while let Some(chunk) = stream.next().await {
         let chunk = chunk.map_err(|e| format!("Ошибка чтения данных: {}", e))?;
@@ -778,8 +787,17 @@ async fn download_update(url: String) -> Result<String, String> {
         
         downloaded += chunk.len() as u64;
         
-        if downloaded % (1024 * 1024) == 0 {
-            println!("[UPDATE] Скачано: {} MB", downloaded / (1024 * 1024));
+        // Emit progress event every 1%
+        if total_size > 0 {
+            let percent = (downloaded * 100) / total_size;
+            if percent != last_percent {
+                last_percent = percent;
+                let _ = app.emit("update-progress", serde_json::json!({
+                    "percent": percent,
+                    "downloaded": downloaded,
+                    "total": total_size
+                }));
+            }
         }
     }
     

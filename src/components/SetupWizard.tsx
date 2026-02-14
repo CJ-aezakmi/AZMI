@@ -2,9 +2,9 @@ import { useState, useEffect, useCallback } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { Progress } from '@/components/ui/progress';
 import { Button } from '@/components/ui/button';
-import { CheckCircle, XCircle, Download, Loader2, ExternalLink } from 'lucide-react';
+import { CheckCircle, XCircle, Loader2 } from 'lucide-react';
 
-type SetupStep = 'checking' | 'installing-browsers' | 'need-nodejs' | 'installing-nodejs' | 'ready' | 'error';
+type SetupStep = 'checking' | 'ready' | 'error';
 
 interface SetupWizardProps {
     onSetupComplete: () => void;
@@ -15,7 +15,6 @@ const SetupWizard = ({ onSetupComplete }: SetupWizardProps) => {
     const [progress, setProgress] = useState(0);
     const [statusMessage, setStatusMessage] = useState('Проверка компонентов...');
     const [errorMessage, setErrorMessage] = useState('');
-    const [retryCount, setRetryCount] = useState(0);
 
     const checkComponents = useCallback(async () => {
         setStep('checking');
@@ -23,61 +22,20 @@ const SetupWizard = ({ onSetupComplete }: SetupWizardProps) => {
         setStatusMessage('Проверка Node.js...');
 
         try {
-            // Шаг 1: Проверяем Node.js (bundled идёт в комплекте!)
+            // Проверяем Node.js (bundled идёт в комплекте)
             const nodeInstalled = await invoke<boolean>('check_node_installed');
-            setProgress(30);
+            setProgress(50);
 
             if (!nodeInstalled) {
-                // Bundled node не найден — предлагаем установить системный
-                setStep('need-nodejs');
-                setStatusMessage('Node.js не найден в комплекте. Требуется установка.');
+                setStep('error');
+                setErrorMessage('Node.js не найден. Переустановите приложение.');
                 return;
             }
 
-            setStatusMessage('Node.js найден ✓ Проверка браузера...');
-            setProgress(50);
-
-            // Шаг 2: Проверяем Chromium
-            const browsersInstalled = await invoke<boolean>('check_browsers_installed');
-            setProgress(70);
-
-            if (!browsersInstalled) {
-                // Автоматически устанавливаем Chromium!
-                setStep('installing-browsers');
-                setStatusMessage('Загрузка Chromium браузера... Это может занять 1-3 минуты.');
-                setProgress(75);
-                
-                try {
-                    await invoke<string>('install_playwright_browsers_cmd');
-                    setProgress(95);
-                    setStatusMessage('Chromium установлен! Запуск...');
-                } catch (installErr: any) {
-                    console.error('Browser install error:', installErr);
-                    const errMsg = typeof installErr === 'string' ? installErr : (installErr?.message || 'Ошибка установки браузера');
-                    // Если первая попытка не удалась — retry
-                    if (retryCount < 2) {
-                        setRetryCount(prev => prev + 1);
-                        setStatusMessage(`Повторная попытка загрузки (${retryCount + 1}/3)...`);
-                        await new Promise(r => setTimeout(r, 3000));
-                        try {
-                            await invoke<string>('install_playwright_browsers_cmd');
-                            setProgress(95);
-                        } catch (retryErr: any) {
-                            const retryErrMsg = typeof retryErr === 'string' ? retryErr : (retryErr?.message || 'Ошибка установки браузера');
-                            setStep('error');
-                            setErrorMessage(retryErrMsg);
-                            return;
-                        }
-                    } else {
-                        setStep('error');
-                        setErrorMessage(errMsg);
-                        return;
-                    }
-                }
-            }
-
-            // Всё готово!
+            setStatusMessage('Node.js найден ✓');
             setProgress(100);
+
+            // Всё готово — Camoufox скачивается при первом запуске профиля
             setStep('ready');
             setStatusMessage('Все компоненты готовы!');
 
@@ -88,28 +46,7 @@ const SetupWizard = ({ onSetupComplete }: SetupWizardProps) => {
             setStep('error');
             setErrorMessage(err?.message || 'Ошибка проверки компонентов');
         }
-    }, [onSetupComplete, retryCount]);
-
-    const handleInstallNodeJS = async () => {
-        setStep('installing-nodejs');
-        setStatusMessage('Скачивание Node.js с официального сайта...');
-        setProgress(20);
-
-        try {
-            const result = await invoke<string>('download_and_run_nodejs_installer');
-            setProgress(80);
-            setStatusMessage(result || 'Node.js установлен! Проверяем компоненты...');
-
-            await new Promise(resolve => setTimeout(resolve, 3000));
-            setProgress(90);
-
-            await checkComponents();
-        } catch (err: any) {
-            console.error('Node.js install error:', err);
-            setStep('error');
-            setErrorMessage(err?.message || 'Ошибка установки Node.js. Установите вручную с https://nodejs.org');
-        }
-    };
+    }, [onSetupComplete]);
 
     useEffect(() => {
         checkComponents();
@@ -133,12 +70,6 @@ const SetupWizard = ({ onSetupComplete }: SetupWizardProps) => {
                         {step === 'checking' && (
                             <Loader2 className="w-16 h-16 text-blue-400 animate-spin" />
                         )}
-                        {step === 'need-nodejs' && (
-                            <Download className="w-16 h-16 text-amber-400" />
-                        )}
-                        {(step === 'installing-nodejs' || step === 'installing-browsers') && (
-                            <Loader2 className="w-16 h-16 text-blue-400 animate-spin" />
-                        )}
                         {step === 'ready' && (
                             <CheckCircle className="w-16 h-16 text-green-400" />
                         )}
@@ -150,9 +81,6 @@ const SetupWizard = ({ onSetupComplete }: SetupWizardProps) => {
                     {/* Status Text */}
                     <h2 className="text-xl font-semibold text-white text-center mb-2">
                         {step === 'checking' && 'Проверка системы'}
-                        {step === 'need-nodejs' && 'Требуется Node.js'}
-                        {step === 'installing-nodejs' && 'Установка Node.js'}
-                        {step === 'installing-browsers' && 'Установка компонентов'}
                         {step === 'ready' && 'Готово!'}
                         {step === 'error' && 'Ошибка'}
                     </h2>
@@ -162,37 +90,10 @@ const SetupWizard = ({ onSetupComplete }: SetupWizardProps) => {
                     </p>
 
                     {/* Progress Bar */}
-                    {(step === 'checking' || step === 'installing-nodejs' || step === 'installing-browsers') && (
+                    {step === 'checking' && (
                         <div className="mb-6">
                             <Progress value={progress} className="h-2" />
                             <p className="text-xs text-gray-500 text-center mt-2">{progress}%</p>
-                        </div>
-                    )}
-
-                    {/* Need Node.js */}
-                    {step === 'need-nodejs' && (
-                        <div className="space-y-4">
-                            <p className="text-gray-300 text-sm text-center">
-                                Node.js необходим для работы браузерных профилей.
-                                Нажмите кнопку ниже, чтобы скачать и установить
-                                последнюю версию с официального сайта.
-                            </p>
-                            <Button
-                                onClick={handleInstallNodeJS}
-                                className="w-full bg-green-600 hover:bg-green-700 text-white h-12 text-base"
-                            >
-                                <Download className="w-5 h-5 mr-2" />
-                                Установить Node.js
-                            </Button>
-                            <a
-                                href="https://nodejs.org"
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="flex items-center justify-center gap-1 text-xs text-gray-500 hover:text-gray-300 transition-colors"
-                            >
-                                <ExternalLink className="w-3 h-3" />
-                                Или скачайте вручную с nodejs.org
-                            </a>
                         </div>
                     )}
 
@@ -224,7 +125,7 @@ const SetupWizard = ({ onSetupComplete }: SetupWizardProps) => {
 
                 {/* Footer */}
                 <p className="text-gray-600 text-xs text-center mt-6">
-                    v2.2.3 &copy; AEZAKMI Team
+                    v3.0.7 &copy; AEZAKMI Team
                 </p>
             </div>
         </div>

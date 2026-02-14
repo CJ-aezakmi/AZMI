@@ -2,7 +2,7 @@
 import { invoke } from '@tauri-apps/api/core';
 
 const GITHUB_REPO = 'CJ-aezakmi/AZMI';
-const CURRENT_VERSION = '3.0.6';
+const CURRENT_VERSION = '3.0.7';
 
 export interface UpdateInfo {
   available: boolean;
@@ -128,15 +128,11 @@ function compareVersions(v1: string, v2: string): number {
 
 /**
  * Скачивает обновление и возвращает путь к файлу
+ * Прогресс передаётся через Tauri event 'update-progress'
  */
-export async function downloadUpdate(url: string, onProgress?: (percent: number) => void): Promise<string> {
+export async function downloadUpdate(url: string, _onProgress?: (percent: number) => void): Promise<string> {
   try {
-    // Вызываем Rust backend для скачивания (с прогрессом)
-    const filePath = await invoke<string>('download_update', {
-      url,
-      onProgress: onProgress ? (percent: number) => onProgress(percent) : undefined
-    });
-
+    const filePath = await invoke<string>('download_update', { url });
     return filePath;
   } catch (error) {
     console.error('Error downloading update:', error);

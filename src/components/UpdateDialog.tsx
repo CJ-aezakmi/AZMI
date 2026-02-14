@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
@@ -16,6 +16,23 @@ const UpdateDialog = ({ open, updateInfo, onUpdate, onLater }: UpdateDialogProps
   const [isDownloading, setIsDownloading] = useState(false);
   const [downloadProgress, setDownloadProgress] = useState(0);
   const [error, setError] = useState<string | null>(null);
+
+  // Listen for download progress events from Rust backend
+  useEffect(() => {
+    if (!isDownloading) return;
+    let unlisten: (() => void) | null = null;
+    (async () => {
+      try {
+        const { listen } = await import('@tauri-apps/api/event');
+        unlisten = await listen<{ percent: number; downloaded: number; total: number }>('update-progress', (event) => {
+          setDownloadProgress(event.payload.percent);
+        });
+      } catch (e) {
+        console.error('Failed to listen for update-progress:', e);
+      }
+    })();
+    return () => { if (unlisten) unlisten(); };
+  }, [isDownloading]);
 
   if (!updateInfo || !updateInfo.available) return null;
 
