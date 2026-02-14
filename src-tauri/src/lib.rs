@@ -1,7 +1,8 @@
-// src-tauri/src/lib.rs — AEZAKMI Pro v3.0.3
+// src-tauri/src/lib.rs — AEZAKMI Pro v3.0.5
 
 use base64::Engine;
 use tauri::Manager;
+use tauri::Emitter;
 use std::sync::Mutex;
 use std::collections::HashMap;
 
@@ -99,6 +100,180 @@ fn get_modules_dir() -> Result<std::path::PathBuf, String> {
     Ok(data_dir.join("playwright").join("modules"))
 }
 
+// ============================================================================
+// CAMOUFOX: Проверка и скачивание антидетект-браузера
+// ============================================================================
+
+const CAMOUFOX_VERSION: &str = "135.0.1-beta.24";
+
+fn get_camoufox_dir() -> Result<std::path::PathBuf, String> {
+    let data_dir = get_data_dir()?;
+    Ok(data_dir.join("camoufox"))
+}
+
+fn get_camoufox_exe() -> Result<std::path::PathBuf, String> {
+    Ok(get_camoufox_dir()?.join("camoufox.exe"))
+}
+
+/// Ищет camoufox.exe рекурсивно (может быть в подпапке после распаковки)
+fn find_camoufox_exe(dir: &std::path::Path) -> Option<std::path::PathBuf> {
+    if let Ok(entries) = std::fs::read_dir(dir) {
+        for entry in entries.filter_map(|e| e.ok()) {
+            let path = entry.path();
+            if path.is_file() && path.file_name().map(|n| n.to_string_lossy().to_lowercase()) == Some("camoufox.exe".into()) {
+                return Some(path);
+            }
+            if path.is_dir() {
+                if let Some(found) = find_camoufox_exe(&path) {
+                    return Some(found);
+                }
+            }
+        }
+    }
+    None
+}
+
+#[tauri::command]
+fn check_camoufox_installed() -> Result<bool, String> {
+    let exe = get_camoufox_exe()?;
+    if exe.exists() {
+        return Ok(true);
+    }
+    // Проверяем в подпапках
+    let dir = get_camoufox_dir()?;
+    if dir.exists() {
+        if let Some(_) = find_camoufox_exe(&dir) {
+            return Ok(true);
+        }
+    }
+    Ok(false)
+}
+
+#[tauri::command]
+async fn download_camoufox(app: tauri::AppHandle) -> Result<String, String> {
+    use futures_util::StreamExt;
+    
+    let camoufox_dir = get_camoufox_dir()?;
+    std::fs::create_dir_all(&camoufox_dir)
+        .map_err(|e| format!("Не удалось создать папку: {}", e))?;
+    
+    // Проверяем — может уже установлен
+    let exe = get_camoufox_exe()?;
+    if exe.exists() || find_camoufox_exe(&camoufox_dir).is_some() {
+        let _ = app.emit("camoufox-progress", serde_json::json!({
+            "stage": "done", "percent": 100, "message": "Camoufox уже установлен"
+        }));
+        return Ok("already_installed".to_string());
+    }
+    
+    let zip_name = format!("camoufox-{}-win.x86_64.zip", CAMOUFOX_VERSION);
+    let url = format!(
+        "https://github.com/daijro/camoufox/releases/download/v{}/{}",
+        CAMOUFOX_VERSION, zip_name
+    );
+    let zip_path = camoufox_dir.join(&zip_name);
+    
+    // === ЭТАП 1: СКАЧИВАНИЕ ===
+    let _ = app.emit("camoufox-progress", serde_json::json!({
+        "stage": "download", "percent": 0, "message": "Подключение к серверу..."
+    }));
+    
+    let client = reqwest::Client::builder()
+        .redirect(reqwest::redirect::Policy::limited(10))
+        .connect_timeout(std::time::Duration::from_secs(30))
+        // НЕ ставим .timeout() — это убивает долгие скачивания!
+        .build()
+        .map_err(|e| format!("HTTP клиент: {}", e))?;
+    
+    let response = client.get(&url)
+        .header("User-Agent", "AEZAKMI/4.0")
+        .send()
+        .await
+        .map_err(|e| format!("Ошибка загрузки: {}", e))?;
+    
+    if !response.status().is_success() {
+        return Err(format!("HTTP {}: {}", response.status(), url));
+    }
+    
+    let total_size = response.content_length().unwrap_or(530_000_000); // ~530MB
+    let mut downloaded: u64 = 0;
+    let mut last_pct: i32 = -1;
+    let start_time = std::time::Instant::now();
+    
+    let mut file = std::fs::File::create(&zip_path)
+        .map_err(|e| format!("Не удалось создать файл: {}", e))?;
+    
+    let mut stream = response.bytes_stream();
+    
+    while let Some(chunk_result) = stream.next().await {
+        let chunk = chunk_result.map_err(|e| format!("Ошибка скачивания: {}", e))?;
+        use std::io::Write;
+        file.write_all(&chunk).map_err(|e| format!("Ошибка записи: {}", e))?;
+        downloaded += chunk.len() as u64;
+        
+        let pct = ((downloaded as f64 / total_size as f64) * 100.0) as i32;
+        if pct != last_pct {
+            last_pct = pct;
+            let mb = downloaded / 1024 / 1024;
+            let total_mb = total_size / 1024 / 1024;
+            let elapsed = start_time.elapsed().as_secs_f64();
+            let speed_mbps = if elapsed > 0.0 { (downloaded as f64 / 1024.0 / 1024.0) / elapsed } else { 0.0 };
+            let _ = app.emit("camoufox-progress", serde_json::json!({
+                "stage": "download",
+                "percent": pct,
+                "message": format!("{} / {} MB", mb, total_mb),
+                "speed": format!("{:.1} MB/s", speed_mbps),
+                "downloaded": mb,
+                "totalMb": total_mb
+            }));
+        }
+    }
+    
+    drop(file);
+    let total_elapsed = start_time.elapsed().as_secs();
+    println!("[CAMOUFOX] Скачано: {} MB за {} сек", downloaded / 1024 / 1024, total_elapsed);
+    
+    // === ЭТАП 2: РАСПАКОВКА ===
+    let _ = app.emit("camoufox-progress", serde_json::json!({
+        "stage": "extract", "percent": 0, "message": "Распаковка Camoufox..."
+    }));
+    
+    let zip_path_str = zip_path.display().to_string();
+    let dir_str = camoufox_dir.display().to_string();
+    
+    let output = std::process::Command::new("powershell")
+        .args([
+            "-NoProfile", "-Command",
+            &format!("Expand-Archive -Path '{}' -DestinationPath '{}' -Force", zip_path_str, dir_str)
+        ])
+        .output()
+        .map_err(|e| format!("PowerShell: {}", e))?;
+    
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!("Распаковка: {}", stderr));
+    }
+    
+    // Удаляем zip
+    let _ = std::fs::remove_file(&zip_path);
+    
+    // Проверяем что exe существует
+    let found_exe = if exe.exists() {
+        exe.clone()
+    } else {
+        find_camoufox_exe(&camoufox_dir)
+            .ok_or_else(|| "camoufox.exe не найден после распаковки".to_string())?
+    };
+    
+    println!("[CAMOUFOX] Установлен: {:?}", found_exe);
+    
+    let _ = app.emit("camoufox-progress", serde_json::json!({
+        "stage": "done", "percent": 100, "message": "Camoufox установлен!"
+    }));
+    
+    Ok("installed".to_string())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -106,13 +281,10 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_shell::init())
         .setup(|app| {
-            println!("[STARTUP] AEZAKMI Pro v3.0.3");
+            println!("[STARTUP] AEZAKMI Pro v3.0.5");
             
-            // Распаковываем playwright-core.zip в AppData при первом запуске
-            match ensure_playwright_ready() {
-                Ok(()) => println!("[STARTUP] ✓ Playwright готов"),
-                Err(e) => eprintln!("[STARTUP] ⚠ Playwright: {}", e),
-            }
+            // Camoufox скачивается пользователем через UI при первом запуске
+            // Playwright больше не используется
             
             #[cfg(debug_assertions)]
             if let Some(window) = app.get_webview_window("main") {
@@ -139,7 +311,9 @@ pub fn run() {
             start_cookie_bot,
             stop_cookie_bot,
             get_playwright_version,
-            update_playwright_runtime
+            update_playwright_runtime,
+            check_camoufox_installed,
+            download_camoufox
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application")
@@ -1072,7 +1246,7 @@ async fn install_playwright_browsers_cmd() -> Result<String, String> {
     println!("[BROWSERS] Компонентов для установки: {}", components.len());
     
     let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(600)) // 10 минут на скачивание
+        .connect_timeout(std::time::Duration::from_secs(30))
         .build()
         .map_err(|e| format!("Ошибка HTTP клиента: {}", e))?;
     

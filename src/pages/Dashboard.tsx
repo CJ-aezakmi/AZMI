@@ -42,18 +42,33 @@ const Dashboard = () => {
   const [isUpdatingPlaywright, setIsUpdatingPlaywright] = useState(false);
   // Default browser engine setting
   const [defaultEngine, setDefaultEngine] = useState<BrowserEngine>(
-    () => (localStorage.getItem('aezakmi_default_engine') as BrowserEngine) || 'chromium'
+    () => (localStorage.getItem('aezakmi_default_engine') as BrowserEngine) || 'camoufox'
   );
+  // Camoufox download state
+  const [camoufoxDownloading, setCamoufoxDownloading] = useState(false);
+  const [camoufoxProgress, setCamoufoxProgress] = useState({ stage: '', percent: 0, message: '', speed: '' });
+  const [camoufoxInstalled, setCamoufoxInstalled] = useState<boolean | null>(null);
+  const [funPhraseIndex, setFunPhraseIndex] = useState(0);
 
 
-  // Загрузка данных из localStorage
+  // Загрузка данных из localStorage + проверка Camoufox
   useEffect(() => {
     const savedProfiles = localStorage.getItem('aezakmi_profiles');
     const savedProxies = localStorage.getItem('aezakmi_proxies');
     const savedFolders = localStorage.getItem('aezakmi_folders');
 
     if (savedProfiles) {
-      setProfiles(JSON.parse(savedProfiles));
+      // Миграция: старые профили с browserEngine='chromium' → 'camoufox'
+      const parsed = JSON.parse(savedProfiles) as Profile[];
+      const migrated = parsed.map((p: Profile) => ({
+        ...p,
+        browserEngine: (p.browserEngine === 'chromium' || !p.browserEngine) ? 'camoufox' as BrowserEngine : p.browserEngine,
+      }));
+      setProfiles(migrated);
+      // Сохраняем миграцию
+      if (JSON.stringify(parsed) !== JSON.stringify(migrated)) {
+        localStorage.setItem('aezakmi_profiles', JSON.stringify(migrated));
+      }
     }
     if (savedProxies) {
       setProxies(JSON.parse(savedProxies));
@@ -61,7 +76,79 @@ const Dashboard = () => {
     if (savedFolders) {
       setFolders(JSON.parse(savedFolders));
     }
+
+    // Проверяем установлен ли Camoufox
+    (async () => {
+      try {
+        const { invoke } = await import('@tauri-apps/api/core');
+        const installed = await invoke('check_camoufox_installed') as boolean;
+        setCamoufoxInstalled(installed);
+      } catch (e) {
+        setCamoufoxInstalled(false);
+      }
+    })();
   }, []);
+
+  // Слушаем прогресс скачивания Camoufox
+  useEffect(() => {
+    let unlisten: (() => void) | null = null;
+    (async () => {
+      try {
+        const { listen } = await import('@tauri-apps/api/event');
+        unlisten = await listen<{ stage: string; percent: number; message: string; speed?: string }>('camoufox-progress', (event) => {
+          setCamoufoxProgress(event.payload);
+          if (event.payload.stage === 'done') {
+            setCamoufoxDownloading(false);
+            setCamoufoxInstalled(true);
+          }
+        });
+      } catch (e) {}
+    })();
+    return () => { if (unlisten) unlisten(); };
+  }, []);
+
+  // Ротация прикольных фраз при скачивании
+  const funPhrases = [
+    { emoji: '🕵️', text: 'Скрываем вашу личность...' },
+    { emoji: '🔐', text: 'Шифруем отпечатки браузера...' },
+    { emoji: '🛡️', text: 'Настраиваем антидетект ядро...' },
+    { emoji: '🚀', text: 'Готовимся к взлому пентагона...' },
+    { emoji: '🧬', text: 'Генерируем уникальную ДНК браузера...' },
+    { emoji: '🌍', text: 'Меняем геолокацию на Багамы...' },
+    { emoji: '👻', text: 'Становимся невидимыми...' },
+    { emoji: '🎭', text: 'Надеваем маску анонимности...' },
+    { emoji: '🦊', text: 'Лиса маскируется в толпе...' },
+    { emoji: '💻', text: 'Обходим системы обнаружения...' },
+    { emoji: '🕶️', text: 'Включаем режим инкогнито v2.0...' },
+    { emoji: '🧪', text: 'Смешиваем фингерпринты...' },
+    { emoji: '📡', text: 'Подключаемся к секретному каналу...' },
+    { emoji: '🔧', text: 'Тюнингуем WebGL и Canvas...' },
+    { emoji: '🎯', text: 'Калибруем аудио-отпечатки...' },
+    { emoji: '🌐', text: 'Подменяем WebRTC leak...' },
+    { emoji: '🤖', text: 'Обучаем ИИ маскировки...' },
+    { emoji: '💎', text: 'Полируем идеальный фингерпринт...' },
+    // GTA San Andreas vibes
+    { emoji: '🚗', text: 'All you had to do was follow the damn train, CJ!' },
+    { emoji: '🏠', text: 'Grove Street. Home...' },
+    { emoji: '💪', text: 'Respect+' },
+    { emoji: '🎮', text: 'Ah shit, here we go again...' },
+    { emoji: '🔫', text: 'I\'ll have two number 9s...' },
+    { emoji: '🏍️', text: 'San Andreas загружается...' },
+    { emoji: '⭐', text: 'Wasted... шутка, всё идёт по плану' },
+    { emoji: '🗺️', text: 'Territory captured! +1 антидетект' },
+    { emoji: '💰', text: 'Mission Passed! $$$' },
+    { emoji: '🚁', text: 'Чит-код на бессмертие активирован' },
+    { emoji: '🎲', text: 'You picked the wrong house, fool!' },
+    { emoji: '🏎️', text: 'GTA San Andreas Loading Screen...' },
+  ];
+
+  useEffect(() => {
+    if (!camoufoxDownloading) return;
+    const interval = setInterval(() => {
+      setFunPhraseIndex(prev => (prev + 1) % funPhrases.length);
+    }, 3000);
+    return () => clearInterval(interval);
+  }, [camoufoxDownloading]);
 
   // Сохранение профилей
   const saveProfiles = (newProfiles: Profile[]) => {
@@ -109,32 +196,55 @@ const Dashboard = () => {
     setEditingProfile(null);
   };
 
+  // Скачивание Camoufox
+  const handleDownloadCamoufox = async () => {
+    if (camoufoxDownloading) return;
+    setCamoufoxDownloading(true);
+    setCamoufoxProgress({ stage: 'download', percent: 0, message: 'Начинаем скачивание...' });
+    try {
+      const { invoke } = await import('@tauri-apps/api/core');
+      await invoke('download_camoufox');
+    } catch (err: any) {
+      toast.error('Ошибка установки компонентов', { description: err?.message || String(err) });
+      setCamoufoxDownloading(false);
+    }
+  };
+
   // Запуск профиля
   const handleLaunchProfile = async (profileId: string) => {
     const profile = profiles.find(p => p.id === profileId);
-    if (profile) {
-      toast.info(`Запуск профиля "${profile.name}"...`, {
-        description: 'Попытка открыть браузер с настройками профиля'
+    if (!profile) return;
+
+    // Проверяем Camoufox
+    if (!camoufoxInstalled) {
+      toast.info('Устанавливаем необходимые компоненты (~530 MB)...', {
+        description: 'После установки профиль запустится автоматически'
       });
+      await handleDownloadCamoufox();
+      // После скачивания запускаем профиль
+      toast.info(`Запуск профиля "${profile.name}"...`);
+    }
 
-      try {
-        // Вызов реальной функции запуска (tauri plugin shell)
-        await launchProfile(profile);
+    toast.info(`Запуск профиля "${profile.name}"...`, {
+      description: '🦊 Антидетект-браузер запускается...'
+    });
 
-        const updatedProfiles = profiles.map(p =>
-          p.id === profileId ? { ...p, status: 'active' as const } : p
-        );
-        saveProfiles(updatedProfiles);
+    try {
+      await launchProfile(profile);
 
-        toast.success(`Профиль "${profile.name}" активен!`, {
-          description: 'Браузер запущен'
-        });
-      } catch (err: any) {
-        console.error('launchProfile error', err);
-        toast.error(`Не удалось запустить профиль`, {
-          description: err?.message || String(err)
-        });
-      }
+      const updatedProfiles = profiles.map(p =>
+        p.id === profileId ? { ...p, status: 'active' as const } : p
+      );
+      saveProfiles(updatedProfiles);
+
+      toast.success(`Профиль "${profile.name}" активен!`, {
+        description: '🦊 Camoufox браузер запущен'
+      });
+    } catch (err: any) {
+      console.error('launchProfile error', err);
+      toast.error(`Не удалось запустить профиль`, {
+        description: err?.message || String(err)
+      });
     }
   };
 
@@ -454,6 +564,95 @@ const Dashboard = () => {
 
   return (
     <div className="flex h-screen bg-gray-50 relative">
+      {/* Camoufox Download Progress Overlay */}
+      {camoufoxDownloading && (
+        <div className="fixed inset-0 z-[100] bg-black/70 backdrop-blur-md flex items-center justify-center">
+          <div className="bg-gradient-to-b from-gray-900 to-gray-950 rounded-2xl shadow-2xl p-8 max-w-lg w-full mx-4 border border-orange-500/30">
+            {/* Animated fox */}
+            <div className="text-center mb-6">
+              <div className="text-6xl mb-2 animate-bounce" style={{ animationDuration: '2s' }}>🦊</div>
+              <h2 className="text-xl font-bold text-white">Установка необходимых компонентов</h2>
+              <p className="text-sm text-gray-400 mt-1">Подождите, идёт настройка...</p>
+            </div>
+
+            {/* Fun rotating phrase */}
+            <div className="mb-6 h-12 flex items-center justify-center">
+              <div 
+                key={funPhraseIndex}
+                className="flex items-center gap-2 px-4 py-2 bg-orange-500/10 border border-orange-500/20 rounded-full"
+                style={{ animation: 'fadeInUp 0.5s ease-out' }}
+              >
+                <span className="text-xl">{funPhrases[funPhraseIndex].emoji}</span>
+                <span className="text-orange-300 text-sm font-medium">{funPhrases[funPhraseIndex].text}</span>
+              </div>
+            </div>
+
+            {/* Progress bar */}
+            <div className="mb-4">
+              <div className="flex justify-between text-sm mb-2">
+                <span className="text-gray-400">
+                  {camoufoxProgress.stage === 'download' ? '📥 Скачивание' : camoufoxProgress.stage === 'extract' ? '📦 Распаковка' : '✅ Готово'}
+                </span>
+                <span className="font-mono text-orange-400 font-bold">{camoufoxProgress.percent}%</span>
+              </div>
+              <div className="w-full bg-gray-800 rounded-full h-4 overflow-hidden relative">
+                <div
+                  className="h-4 rounded-full transition-all duration-500 relative overflow-hidden"
+                  style={{ 
+                    width: `${camoufoxProgress.percent}%`,
+                    background: 'linear-gradient(90deg, #f97316, #fb923c, #f97316)',
+                    backgroundSize: '200% 100%',
+                    animation: 'shimmer 1.5s infinite linear'
+                  }}
+                >
+                  <div className="absolute inset-0 opacity-30" style={{
+                    background: 'repeating-linear-gradient(90deg, transparent, transparent 10px, rgba(255,255,255,0.1) 10px, rgba(255,255,255,0.1) 20px)',
+                    animation: 'moveStripes 1s infinite linear'
+                  }} />
+                </div>
+              </div>
+              <div className="flex justify-between mt-2">
+                <span className="text-xs text-gray-500">{camoufoxProgress.message}</span>
+                {camoufoxProgress.speed && (
+                  <span className="text-xs text-orange-400/80 font-mono">{camoufoxProgress.speed}</span>
+                )}
+              </div>
+            </div>
+
+            {/* Bottom info */}
+            <div className="text-center">
+              <p className="text-xs text-gray-600">Не закрывайте приложение</p>
+            </div>
+          </div>
+
+          {/* CSS animations */}
+          <style>{`
+            @keyframes fadeInUp {
+              from { opacity: 0; transform: translateY(10px); }
+              to { opacity: 1; transform: translateY(0); }
+            }
+            @keyframes shimmer {
+              0% { background-position: 200% 0; }
+              100% { background-position: -200% 0; }
+            }
+            @keyframes moveStripes {
+              0% { transform: translateX(0); }
+              100% { transform: translateX(20px); }
+            }
+          `}</style>
+        </div>
+      )}
+      
+      {/* Camoufox not installed banner */}
+      {camoufoxInstalled === false && !camoufoxDownloading && (
+        <div className="fixed top-0 left-0 right-0 z-[90] bg-orange-500 text-white py-2 px-4 flex items-center justify-center gap-3">
+          <span className="text-sm font-medium">🦊 Необходимые компоненты не установлены</span>
+          <Button size="sm" variant="secondary" onClick={handleDownloadCamoufox} className="h-7 text-xs">
+            <Download className="w-3 h-3 mr-1" /> Установить (~530 MB)
+          </Button>
+        </div>
+      )}
+
       {/* Background Image */}
       <div
         className="fixed inset-0 z-0 bg-cover bg-center bg-no-repeat opacity-20"
@@ -632,10 +831,11 @@ const Dashboard = () => {
                         <Button
                           size="sm"
                           className="w-full"
-                          onClick={() => launchProfile(profile)}
+                          onClick={() => handleLaunchProfile(profile.id)}
+                          disabled={camoufoxDownloading}
                         >
                           <Play className="w-4 h-4 mr-1" />
-                          Запустить
+                          {camoufoxDownloading ? 'Скачивание...' : '🦊 Запустить'}
                         </Button>
                         <div className="flex gap-2">
                           <Button
@@ -1026,15 +1226,11 @@ const Dashboard = () => {
                   <CardTitle>Движок браузера</CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                  <p className="text-sm text-gray-600 mb-3">Выберите движок браузера, который будет использоваться по умолчанию для новых профилей</p>
-                  <Select value={defaultEngine} onValueChange={(v) => setDefaultEngine(v as BrowserEngine)}>
-                    <SelectTrigger className="w-full">
-                      <SelectValue placeholder="Выберите движок" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="chromium">Chromium (Рекомендуется)</SelectItem>
-                    </SelectContent>
-                  </Select>
+                  <p className="text-sm text-gray-600 mb-3">Антидетект движок на основе Firefox с нативной защитой отпечатков</p>
+                  <div className="flex items-center gap-2 px-3 py-2 bg-green-50 border border-green-200 rounded-md text-sm">
+                    <span>🦊</span>
+                    <span className="text-green-700 font-medium">Camoufox — антидетект Firefox</span>
+                  </div>
                 </CardContent>
               </Card>
 

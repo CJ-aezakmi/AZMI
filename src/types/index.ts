@@ -94,7 +94,7 @@ export interface Antidetect {
 }
 
 // Типы браузеров
-export type BrowserEngine = 'chromium';
+export type BrowserEngine = 'camoufox';
 
 // Эмуляция мобильного устройства
 export interface MobileEmulation {

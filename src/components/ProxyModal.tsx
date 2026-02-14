@@ -7,6 +7,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Proxy } from '@/types';
+import { getGeoIPInfo } from '@/lib/geoip';
 
 interface ProxyModalProps {
   open: boolean;
@@ -17,6 +18,7 @@ interface ProxyModalProps {
 const ProxyModal = ({ open, onOpenChange, onAdd }: ProxyModalProps) => {
   const [proxyText, setProxyText] = useState('');
   const [quickProxyInput, setQuickProxyInput] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
   
   // Ручной ввод
   const [manualType, setManualType] = useState<Proxy['type']>('http');
@@ -34,12 +36,12 @@ const ProxyModal = ({ open, onOpenChange, onAdd }: ProxyModalProps) => {
         const url = new URL(line);
         const proxyType = (url.protocol.replace(':', '') as any) || 'http';
         const proxyHost = url.hostname;
-        const proxyPort = Number(url.port) || (url.protocol === 'https:' ? 443 : 80);
+        const proxyPort = url.port || (url.protocol === 'https:' ? '443' : '80');
         return {
           name: `${proxyType.toUpperCase()} - ${proxyHost}:${proxyPort}`,
           type: proxyType,
           host: proxyHost,
-          port: proxyPort,
+          port: String(proxyPort),
           login: url.username || undefined,
           username: url.username || undefined,
           password: url.password || undefined,
@@ -56,7 +58,7 @@ const ProxyModal = ({ open, onOpenChange, onAdd }: ProxyModalProps) => {
           name: `HTTP - ${parts[0]}:${parts[1]}`,
           type: 'http',
           host: parts[0],
-          port: Number(parts[1]) || 80,
+          port: String(parts[1] || '80'),
           login: parts[2] || undefined,
           username: parts[2] || undefined,
           password: parts[3] || undefined,
@@ -70,7 +72,7 @@ const ProxyModal = ({ open, onOpenChange, onAdd }: ProxyModalProps) => {
           name: `HTTP - ${parts[0]}:${parts[1]}`,
           type: 'http',
           host: parts[0],
-          port: Number(parts[1]) || 80,
+          port: String(parts[1] || '80'),
           enabled: true,
         } as Proxy;
       }
@@ -85,7 +87,7 @@ const ProxyModal = ({ open, onOpenChange, onAdd }: ProxyModalProps) => {
           name: `HTTP - ${host}:${port}`,
           type: 'http',
           host,
-          port: Number(port) || 80,
+          port: String(port || '80'),
           login: username || undefined,
           username: username || undefined,
           password: password || undefined,
@@ -98,12 +100,12 @@ const ProxyModal = ({ open, onOpenChange, onAdd }: ProxyModalProps) => {
         const [type, rest] = line.split('//');
         const [host, port] = rest.split(':');
         const proxyType = (type.replace(':', '') as any) || 'http';
-        const proxyPort = Number(port) || (type === 'https:' ? 443 : 80);
+        const proxyPort = port || (type === 'https:' ? '443' : '80');
         return {
           name: `${proxyType.toUpperCase()} - ${host}:${proxyPort}`,
           type: proxyType,
           host,
-          port: proxyPort,
+          port: String(proxyPort),
           enabled: true,
         } as Proxy;
       }
@@ -113,7 +115,79 @@ const ProxyModal = ({ open, onOpenChange, onAdd }: ProxyModalProps) => {
     return null;
   };
 
-  const handleBulkSubmit = () => {
+  // Обогащение прокси данными GeoIP (страна, город)
+  // Приоритет: 1) country-XX в логине, 2) GeoIP по IP хоста
+  const enrichWithGeoIP = async (proxies: Proxy[]): Promise<Proxy[]> => {
+    const enriched = await Promise.all(proxies.map(async (proxy) => {
+      try {
+        // 1. Попытка извлечь страну из логина (формат SX.ORG: country-XX-state-...-city-...)
+        const login = proxy.username || proxy.login || '';
+        const countryMatch = login.match(/country-([A-Z]{2})/i);
+        const stateMatch = login.match(/state-(\d+)/i);
+        const cityMatch = login.match(/city-(\d+)/i);
+
+        if (countryMatch) {
+          // Страна найдена в логине — доверяем ей больше чем GeoIP по gateway IP
+          const cc = countryMatch[1].toLowerCase();
+          const countryNames: Record<string, string> = {
+            tr: 'Turkey', us: 'United States', de: 'Germany', gb: 'United Kingdom',
+            fr: 'France', nl: 'Netherlands', ru: 'Russia', br: 'Brazil',
+            ca: 'Canada', au: 'Australia', jp: 'Japan', kr: 'South Korea',
+            in: 'India', it: 'Italy', es: 'Spain', pl: 'Poland', ua: 'Ukraine',
+            cn: 'China', mx: 'Mexico', ar: 'Argentina', se: 'Sweden', no: 'Norway',
+            fi: 'Finland', dk: 'Denmark', ch: 'Switzerland', at: 'Austria',
+            be: 'Belgium', pt: 'Portugal', cz: 'Czech Republic', ro: 'Romania',
+            hu: 'Hungary', bg: 'Bulgaria', hr: 'Croatia', sk: 'Slovakia',
+            il: 'Israel', ae: 'UAE', sa: 'Saudi Arabia', eg: 'Egypt',
+            za: 'South Africa', ng: 'Nigeria', ke: 'Kenya', th: 'Thailand',
+            vn: 'Vietnam', id: 'Indonesia', ph: 'Philippines', sg: 'Singapore',
+            my: 'Malaysia', hk: 'Hong Kong', tw: 'Taiwan', cl: 'Chile',
+            co: 'Colombia', pe: 'Peru', ec: 'Ecuador', ve: 'Venezuela',
+          };
+          const country = countryNames[cc] || cc.toUpperCase();
+          const displayName = country;
+          return {
+            ...proxy,
+            name: `${displayName} - ${proxy.type}://${proxy.host}:${proxy.port}`,
+            username: proxy.username || proxy.login || undefined,
+            metadata: {
+              ...proxy.metadata,
+              country,
+              countryCode: cc,
+              state: stateMatch ? stateMatch[1] : undefined,
+              city: cityMatch ? cityMatch[1] : undefined,
+            },
+          };
+        }
+
+        // 2. Fallback: GeoIP по IP хоста
+        const geo = await getGeoIPInfo(proxy.host);
+        if (geo) {
+          const cc = (geo.countryCode || '').toLowerCase();
+          const city = geo.city || '';
+          const displayName = city || cc.toUpperCase() || 'Proxy';
+          return {
+            ...proxy,
+            name: `${displayName} - ${proxy.type}://${proxy.host}:${proxy.port}`,
+            username: proxy.username || proxy.login || undefined,
+            metadata: {
+              ...proxy.metadata,
+              country: geo.country,
+              countryCode: cc,
+              city: geo.city,
+              state: geo.region,
+            },
+          };
+        }
+      } catch (e) {
+        // GeoIP lookup failed, keep proxy as is
+      }
+      return { ...proxy, username: proxy.username || proxy.login || undefined };
+    }));
+    return enriched;
+  };
+
+  const handleBulkSubmit = async () => {
     const lines = proxyText.split('\n').map(line => line.trim()).filter(line => line);
     const proxies: Proxy[] = [];
 
@@ -129,11 +203,17 @@ const ProxyModal = ({ open, onOpenChange, onAdd }: ProxyModalProps) => {
       return;
     }
 
-    onAdd(proxies);
+    setIsLoading(true);
+    try {
+      const enriched = await enrichWithGeoIP(proxies);
+      onAdd(enriched);
+    } finally {
+      setIsLoading(false);
+    }
     setProxyText('');
   };
 
-  const handleQuickSubmit = () => {
+  const handleQuickSubmit = async () => {
     if (!quickProxyInput.trim()) {
       alert('Введите прокси');
       return;
@@ -145,14 +225,20 @@ const ProxyModal = ({ open, onOpenChange, onAdd }: ProxyModalProps) => {
       return;
     }
 
-    onAdd([proxy]);
+    setIsLoading(true);
+    try {
+      const enriched = await enrichWithGeoIP([proxy]);
+      onAdd(enriched);
+    } finally {
+      setIsLoading(false);
+    }
     setQuickProxyInput('');
   };
 
   // Для предпросмотра распарсенного прокси в UI
   const quickPreview = parseProxyLine(quickProxyInput || '');
 
-  const handleManualSubmit = () => {
+  const handleManualSubmit = async () => {
     if (!manualHost || !manualPort) {
       alert('Заполните хост и порт');
       return;
@@ -162,13 +248,20 @@ const ProxyModal = ({ open, onOpenChange, onAdd }: ProxyModalProps) => {
       name: `${manualType.toUpperCase()} - ${manualHost}:${manualPort}`,
       type: manualType,
       host: manualHost,
-      port: Number(manualPort),
+      port: String(manualPort),
       login: manualUsername || undefined,
+      username: manualUsername || undefined,
       password: manualPassword || undefined,
       enabled: true,
     };
 
-    onAdd([proxy]);
+    setIsLoading(true);
+    try {
+      const enriched = await enrichWithGeoIP([proxy]);
+      onAdd(enriched);
+    } finally {
+      setIsLoading(false);
+    }
     
     // Очистка формы
     setManualHost('');
@@ -247,8 +340,8 @@ const ProxyModal = ({ open, onOpenChange, onAdd }: ProxyModalProps) => {
               <Button variant="outline" onClick={() => onOpenChange(false)}>
                 Отмена
               </Button>
-              <Button onClick={handleQuickSubmit}>
-                Добавить прокси
+              <Button onClick={handleQuickSubmit} disabled={isLoading}>
+                {isLoading ? '🌍 Определение страны...' : 'Добавить прокси'}
               </Button>
             </DialogFooter>
           </TabsContent>
@@ -282,8 +375,8 @@ const ProxyModal = ({ open, onOpenChange, onAdd }: ProxyModalProps) => {
               <Button variant="outline" onClick={() => onOpenChange(false)}>
                 Отмена
               </Button>
-              <Button onClick={handleBulkSubmit}>
-                Добавить все прокси
+              <Button onClick={handleBulkSubmit} disabled={isLoading}>
+                {isLoading ? '🌍 Определение стран...' : 'Добавить все прокси'}
               </Button>
             </DialogFooter>
           </TabsContent>
@@ -354,8 +447,8 @@ const ProxyModal = ({ open, onOpenChange, onAdd }: ProxyModalProps) => {
               <Button variant="outline" onClick={() => onOpenChange(false)}>
                 Отмена
               </Button>
-              <Button onClick={handleManualSubmit}>
-                Добавить прокси
+              <Button onClick={handleManualSubmit} disabled={isLoading}>
+                {isLoading ? '🌍 Определение страны...' : 'Добавить прокси'}
               </Button>
             </DialogFooter>
           </TabsContent>

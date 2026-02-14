@@ -27,7 +27,7 @@ const ProfileModal = ({ open, onOpenChange, onSave, profile, proxies, folders = 
     name: '',
     notes: '',
     folder: '', // Папка профиля
-    browserEngine: (localStorage.getItem('aezakmi_default_engine') as BrowserEngine) || 'chromium' as BrowserEngine,
+    browserEngine: (localStorage.getItem('aezakmi_default_engine') as BrowserEngine) || 'camoufox' as BrowserEngine,
     mobileEnabled: false,
     mobileDevice: '' as string,
     userAgent: 'auto',
@@ -61,7 +61,7 @@ const ProfileModal = ({ open, onOpenChange, onSave, profile, proxies, folders = 
         name: profile.name,
         notes: profile.notes || '',
         folder: profile.folder || '',
-        browserEngine: profile.browserEngine || (localStorage.getItem('aezakmi_default_engine') as BrowserEngine) || 'chromium',
+        browserEngine: profile.browserEngine || (localStorage.getItem('aezakmi_default_engine') as BrowserEngine) || 'camoufox',
         mobileEnabled: profile.mobileEmulation?.enabled || false,
         mobileDevice: profile.mobileEmulation?.deviceName || '',
         userAgent: profile.userAgent,
@@ -72,7 +72,7 @@ const ProfileModal = ({ open, onOpenChange, onSave, profile, proxies, folders = 
         proxyEnabled: profile.proxy?.enabled || false,
         proxyType: profile.proxy?.type || 'http',
         proxyHost: profile.proxy?.host || '',
-        proxyPort: profile.proxy?.port || '',
+        proxyPort: String(profile.proxy?.port || ''),
         proxyUsername: profile.proxy?.username || '',
         proxyPassword: profile.proxy?.password || '',
         canvasNoise: profile.antidetect.canvasNoise,
@@ -89,7 +89,7 @@ const ProfileModal = ({ open, onOpenChange, onSave, profile, proxies, folders = 
         name: '',
         notes: '',
         folder: '',
-        browserEngine: (localStorage.getItem('aezakmi_default_engine') as BrowserEngine) || 'chromium',
+        browserEngine: (localStorage.getItem('aezakmi_default_engine') as BrowserEngine) || 'camoufox',
         mobileEnabled: false,
         mobileDevice: '',
         userAgent: 'auto',
@@ -206,8 +206,8 @@ const ProfileModal = ({ open, onOpenChange, onSave, profile, proxies, folders = 
       proxyEnabled: true,
       proxyType: proxy.type,
       proxyHost: proxy.host,
-      proxyPort: proxy.port,
-      proxyUsername: proxy.username || '',
+      proxyPort: String(proxy.port || ''),
+      proxyUsername: proxy.username || proxy.login || '',
       proxyPassword: proxy.password || '',
     };
 
@@ -242,10 +242,10 @@ const ProfileModal = ({ open, onOpenChange, onSave, profile, proxies, folders = 
       proxy: formData.proxyEnabled ? {
         enabled: true,
         type: formData.proxyType as 'http' | 'https' | 'socks5' | 'socks4',
-        host: formData.proxyHost.trim(),
-        port: formData.proxyPort.trim(), // Оставляем как string для совместимости
-        username: formData.proxyUsername.trim() || undefined,
-        password: formData.proxyPassword.trim() || undefined,
+        host: String(formData.proxyHost || '').trim(),
+        port: String(formData.proxyPort || '').trim(),
+        username: String(formData.proxyUsername || '').trim() || undefined,
+        password: String(formData.proxyPassword || '').trim() || undefined,
       } : undefined,
       antidetect: {
         canvasNoise: formData.canvasNoise,
@@ -322,14 +322,10 @@ const ProfileModal = ({ open, onOpenChange, onSave, profile, proxies, folders = 
           <TabsContent value="browser" className="space-y-4">
             <div>
               <Label htmlFor="browserEngine">Движок браузера</Label>
-              <Select value={formData.browserEngine} onValueChange={(value) => setFormData({ ...formData, browserEngine: value as BrowserEngine })}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="chromium">Chromium (Рекомендуется)</SelectItem>
-                </SelectContent>
-              </Select>
+              <div className="flex items-center gap-2 px-3 py-2 bg-green-900/30 border border-green-600/30 rounded-md text-sm">
+                <span>🦊</span>
+                <span className="text-green-400 font-medium">Camoufox — антидетект Firefox</span>
+              </div>
             </div>
 
             <div>

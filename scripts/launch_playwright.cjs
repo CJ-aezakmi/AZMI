@@ -1,22 +1,21 @@
 #!/usr/bin/env node
 // ═══════════════════════════════════════════════════════════════════════
-// AEZAKMI Antidetect Browser Launcher v2.1.0
-// Unified launcher: multi-engine (Chromium/Firefox/WebKit) + mobile fingerprints
-// Usage: node scripts/launch_playwright.cjs '<base64-encoded-json>'
+// AEZAKMI Antidetect Browser Launcher v4.0.0
+// Engine: Camoufox (native antidetect Firefox fork)
+// Usage: node scripts/launch_playwright.cjs --payload=<base64-json>
 // ═══════════════════════════════════════════════════════════════════════
 
 const path = require('path');
 const fs = require('fs');
+const { spawn, execSync } = require('child_process');
 
 // ─── PRODUCTION MODE ──────────────────────────────────────────────────
-// Проверяем production режим (если нет node_modules рядом = production)
 const isDev = fs.existsSync(path.join(__dirname, '..', 'node_modules'));
 const log = isDev ? console.log.bind(console) : () => {};
 const warn = isDev ? console.warn.bind(console) : () => {};
-const error = console.error.bind(console); // Errors всегда показываем
+const error = console.error.bind(console);
 
 // ─── PRODUCTION ERROR LOG ─────────────────────────────────────────────
-// В production пишем ошибки в файл (stderr может быть потерян)
 const logFilePath = (() => {
   const localAppData = process.env.LOCALAPPDATA || '';
   if (localAppData) {
@@ -35,7 +34,6 @@ function logToFile(msg) {
   } catch (e) {}
 }
 
-// Перехватываем все необработанные ошибки
 process.on('uncaughtException', (err) => {
   const msg = `UNCAUGHT EXCEPTION: ${err.message}\n${err.stack}`;
   error(msg);
@@ -52,630 +50,723 @@ process.on('unhandledRejection', (reason) => {
 // ─── PATH RESOLUTION ──────────────────────────────────────────────────
 const scriptDir = __dirname;
 const appDir = path.dirname(scriptDir);
-
-// PLAYWRIGHT_BROWSERS_PATH: приоритет — значение от Rust (через env),
-// потом %LOCALAPPDATA%, потом fallback рядом с exe
-let browserCachePath = process.env.PLAYWRIGHT_BROWSERS_PATH || '';
-
-if (!browserCachePath || !fs.existsSync(browserCachePath)) {
-  // Пробуем %LOCALAPPDATA%/AEZAKMI Pro/playwright-cache (production путь)
-  const localAppData = process.env.LOCALAPPDATA || '';
-  if (localAppData) {
-    const localCachePath = path.join(localAppData, 'AEZAKMI Pro', 'playwright-cache');
-    if (fs.existsSync(localCachePath)) {
-      browserCachePath = localCachePath;
-      log('[LAUNCHER] Кеш из LOCALAPPDATA:', browserCachePath);
-    }
-  }
-}
-
-if (!browserCachePath || !fs.existsSync(browserCachePath)) {
-  // Dev mode: ищем в корне проекта (2 уровня вверх от scripts/)
-  const devCachePath = path.join(appDir, '..', '..', 'playwright-cache');
-  if (fs.existsSync(devCachePath)) {
-    browserCachePath = devCachePath;
-    log('[LAUNCHER] Dev-режим: кеш из корневой папки');
-  } else {
-    // Крайний fallback: рядом с exe
-    browserCachePath = path.join(appDir, 'playwright-cache');
-  }
-}
-
-process.env.PLAYWRIGHT_BROWSERS_PATH = browserCachePath;
+const localAppData = process.env.LOCALAPPDATA || '';
 
 log('[LAUNCHER] Скрипт:', scriptDir);
 log('[LAUNCHER] Приложение:', appDir);
-log('[LAUNCHER] Кеш браузеров:', browserCachePath);
-log('[LAUNCHER] Кеш существует:', fs.existsSync(browserCachePath));
 
-// ─── LOAD PLAYWRIGHT ──────────────────────────────────────────────────
-// ВАЖНО: загружаем playwright-core НАПРЯМУЮ по абсолютному пути!
-// v3.0.1: playwright-core теперь в %LOCALAPPDATA%/AEZAKMI Pro/playwright/modules/
-// (распаковывается из ZIP при первом запуске Rust-кодом)
-const localAppData = process.env.LOCALAPPDATA || '';
-const appDataModules = localAppData ? path.join(localAppData, 'AEZAKMI Pro', 'playwright', 'modules') : '';
+// ═══════════════════════════════════════════════════════════════════════
+// PROXY EXTENSION (Firefox WebExtension for proxy routing & auth)
+// Handles proxy inside the browser process — no external bridges needed.
+// camoufox.exe is a launcher stub that exits immediately, so bridges
+// would die before the browser can use them.
+// ═══════════════════════════════════════════════════════════════════════
 
-const playwrightCorePaths = [
-  // v3.0.1: AppData (основной путь в production!)
-  appDataModules ? path.join(appDataModules, 'playwright-core') : '',
-  path.join(appDir, 'playwright', 'modules', 'playwright-core'),       // Bundled fallback
-  path.join(appDir, 'playwright', 'node_modules', 'playwright-core'),  // Dev/fallback
-  path.join(appDir, 'node_modules', 'playwright-core'),                // Alt fallback
-].filter(Boolean);
+function setupProxyExtension(profileDir, proxyConfig) {
+  // proxyConfig: { type: 'http'|'https'|'socks4'|'socks5', host, port, username, password }
+  const extId = 'proxy-helper@aezakmi';
+  const extDir = path.join(profileDir, 'extensions', extId);
 
-// Также пробуем playwright (wrapper), но только если прямой путь к core не сработал
-const playwrightWrapperPaths = [
-  appDataModules ? path.join(appDataModules, 'playwright') : '',
-  path.join(appDir, 'playwright', 'modules', 'playwright'),
-  path.join(appDir, 'playwright', 'node_modules', 'playwright'),
-  path.join(appDir, 'node_modules', 'playwright'),
-  'playwright'
-].filter(Boolean);
+  fs.mkdirSync(extDir, { recursive: true });
 
-let playwright = null;
+  // Map proxy type to Firefox proxy API type
+  let ffType;
+  if (proxyConfig.type === 'socks5') ffType = 'socks';
+  else if (proxyConfig.type === 'socks4') ffType = 'socks4';
+  else ffType = 'http';
 
-// Метод 1: playwright-core напрямую (надёжный — без промежуточного require)
-for (const tryPath of playwrightCorePaths) {
-  if (fs.existsSync(tryPath)) {
-    try {
-      playwright = require(tryPath);
-      log('[LAUNCHER] ✅ playwright-core загружен из:', tryPath);
-      break;
-    } catch (err) {
-      log('[LAUNCHER] ❌ playwright-core не удалось:', tryPath, err.message);
+  const manifest = {
+    manifest_version: 2,
+    name: 'AEZAKMI Proxy',
+    version: '1.0',
+    description: 'Proxy routing and authentication',
+    permissions: [
+      'proxy',
+      'webRequest',
+      'webRequestBlocking',
+      '<all_urls>'
+    ],
+    background: { scripts: ['background.js'] },
+    browser_specific_settings: {
+      gecko: { id: extId, strict_min_version: '91.0' }
     }
-  }
+  };
+
+  const background = [
+    '// Auto-generated by AEZAKMI Launcher',
+    'const P = ' + JSON.stringify({
+      type: ffType,
+      host: proxyConfig.host,
+      port: proxyConfig.port,
+      user: proxyConfig.username || '',
+      pass: proxyConfig.password || '',
+      dns: proxyConfig.type.includes('socks'),
+    }) + ';',
+    '',
+    '// Route ALL requests through the configured proxy',
+    'browser.proxy.onRequest.addListener(',
+    '  () => ({',
+    '    type: P.type,',
+    '    host: P.host,',
+    '    port: P.port,',
+    '    username: P.user || undefined,',
+    '    password: P.pass || undefined,',
+    '    proxyDNS: P.dns',
+    '  }),',
+    '  { urls: ["<all_urls>"] }',
+    ');',
+    '',
+    '// Handle HTTP proxy authentication',
+    'if (P.user && P.pass) {',
+    '  browser.webRequest.onAuthRequired.addListener(',
+    '    (d) => d.isProxy ? { authCredentials: { username: P.user, password: P.pass } } : {},',
+    '    { urls: ["<all_urls>"] },',
+    '    ["blocking"]',
+    '  );',
+    '}',
+    '',
+    'browser.proxy.onError.addListener((e) => console.error("[AEZAKMI Proxy] Error:", e.message));',
+    'console.log("[AEZAKMI Proxy] Loaded:", P.type + "://" + P.host + ":" + P.port);',
+  ].join('\n');
+
+  fs.writeFileSync(path.join(extDir, 'manifest.json'), JSON.stringify(manifest, null, 2));
+  fs.writeFileSync(path.join(extDir, 'background.js'), background);
+
+  log('[CAMOUFOX] Прокси-расширение создано:', extDir);
+  return extDir;
 }
 
-// Метод 2: playwright wrapper (fallback)
-if (!playwright) {
-  for (const tryPath of playwrightWrapperPaths) {
-    if (fs.existsSync(tryPath) || tryPath === 'playwright') {
-      try {
-        playwright = require(tryPath);
-        log('[LAUNCHER] ✅ Playwright (wrapper) загружен из:', tryPath);
-        break;
-      } catch (err) {
-        log('[LAUNCHER] ❌ Не удалось загрузить из:', tryPath, err.message);
+function removeProxyExtension(profileDir) {
+  const extId = 'proxy-helper@aezakmi';
+  const extDir = path.join(profileDir, 'extensions', extId);
+  try {
+    if (fs.existsSync(extDir)) {
+      fs.rmSync(extDir, { recursive: true, force: true });
+      log('[CAMOUFOX] Прокси-расширение удалено');
+    }
+  } catch (e) { /* extension might be locked by running browser */ }
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// CAMOUFOX ENGINE — Native Antidetect Firefox Fork
+// Based on https://github.com/daijro/camoufox (DonutBrowser approach)
+// ═══════════════════════════════════════════════════════════════════════
+
+const CAMOUFOX_VERSION = '135.0.1-beta.24';
+const CAMOUFOX_ZIP_NAME = `camoufox-${CAMOUFOX_VERSION}-win.x86_64.zip`;
+const CAMOUFOX_URL = `https://github.com/daijro/camoufox/releases/download/v${CAMOUFOX_VERSION}/${CAMOUFOX_ZIP_NAME}`;
+
+function getCamoufoxDir() {
+  const la = process.env.LOCALAPPDATA || '';
+  if (la) return path.join(la, 'AEZAKMI Pro', 'camoufox');
+  return path.join(appDir, 'camoufox');
+}
+
+function getCamoufoxExe() {
+  return path.join(getCamoufoxDir(), 'camoufox.exe');
+}
+
+// ─── HTTPS download with redirect following ───────────────────────────
+function httpsGet(url) {
+  return new Promise((resolve, reject) => {
+    const doRequest = (reqUrl, redirects) => {
+      if (redirects > 10) return reject(new Error('Too many redirects'));
+      const parsed = new URL(reqUrl);
+      const mod = parsed.protocol === 'https:' ? https : http;
+      const req = mod.get(reqUrl, { headers: { 'User-Agent': 'AEZAKMI/4.0' } }, (res) => {
+        if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+          return doRequest(res.headers.location, redirects + 1);
+        }
+        if (res.statusCode !== 200) {
+          return reject(new Error(`HTTP ${res.statusCode} for ${reqUrl}`));
+        }
+        resolve(res);
+      });
+      req.on('error', reject);
+      req.setTimeout(600000, () => { req.destroy(); reject(new Error('Download timeout')); });
+    };
+    doRequest(url, 0);
+  });
+}
+
+async function downloadFile(url, destPath) {
+  log(`[CAMOUFOX] Скачивание: ${url}`);
+  logToFile(`Downloading: ${url}`);
+  const res = await httpsGet(url);
+  const totalSize = parseInt(res.headers['content-length'] || '0');
+  let downloaded = 0;
+  let lastPct = -1;
+
+  return new Promise((resolve, reject) => {
+    const fileStream = fs.createWriteStream(destPath);
+    res.on('data', (chunk) => {
+      downloaded += chunk.length;
+      if (totalSize > 0) {
+        const pct = Math.floor(downloaded / totalSize * 100);
+        if (pct !== lastPct && pct % 10 === 0) {
+          log(`[CAMOUFOX] Прогресс: ${pct}% (${Math.floor(downloaded / 1024 / 1024)} MB)`);
+          logToFile(`Download progress: ${pct}%`);
+          lastPct = pct;
+        }
+      }
+    });
+    res.pipe(fileStream);
+    fileStream.on('finish', () => {
+      fileStream.close();
+      log(`[CAMOUFOX] Скачано: ${Math.floor(downloaded / 1024 / 1024)} MB`);
+      resolve();
+    });
+    fileStream.on('error', reject);
+    res.on('error', reject);
+  });
+}
+
+async function ensureCamoufoxInstalled() {
+  const exe = getCamoufoxExe();
+  if (fs.existsSync(exe)) {
+    log('[CAMOUFOX] Бинарник найден:', exe);
+    return;
+  }
+
+  log('[CAMOUFOX] Camoufox не найден, начинаем установку...');
+  logToFile('Camoufox not found, starting installation');
+
+  const camoufoxDir = getCamoufoxDir();
+  fs.mkdirSync(camoufoxDir, { recursive: true });
+
+  const zipPath = path.join(camoufoxDir, CAMOUFOX_ZIP_NAME);
+
+  // Скачиваем zip с GitHub
+  await downloadFile(CAMOUFOX_URL, zipPath);
+
+  // Распаковываем через PowerShell
+  log('[CAMOUFOX] Распаковка...');
+  logToFile('Extracting Camoufox...');
+  try {
+    execSync(
+      `powershell -NoProfile -Command "Expand-Archive -Path '${zipPath}' -DestinationPath '${camoufoxDir}' -Force"`,
+      { timeout: 300000, stdio: isDev ? 'inherit' : 'pipe' }
+    );
+  } catch (e) {
+    throw new Error(`Ошибка распаковки Camoufox: ${e.message}`);
+  }
+
+  // Удаляем zip
+  try { fs.unlinkSync(zipPath); } catch (e) {}
+
+  // Проверяем что exe появился
+  if (!fs.existsSync(exe)) {
+    // Может быть вложенная папка после распаковки
+    const entries = fs.readdirSync(camoufoxDir);
+    log('[CAMOUFOX] Содержимое после распаковки:', entries.join(', '));
+    // Ищем camoufox.exe рекурсивно
+    const found = findExecutable(camoufoxDir, 'camoufox.exe');
+    if (found) {
+      log('[CAMOUFOX] Найден exe в подпапке:', found);
+      logToFile(`Found exe in subdirectory: ${found}`);
+    } else {
+      throw new Error(`camoufox.exe не найден после распаковки в ${camoufoxDir}. Файлы: ${entries.join(', ')}`);
+    }
+  }
+
+  // Сохраняем версию
+  fs.writeFileSync(
+    path.join(camoufoxDir, 'version.json'),
+    JSON.stringify({ version: CAMOUFOX_VERSION, installed: new Date().toISOString() })
+  );
+
+  log('[CAMOUFOX] Установлен успешно:', exe);
+  logToFile('Camoufox installed successfully');
+}
+
+function findExecutable(dir, name) {
+  try {
+    const entries = fs.readdirSync(dir, { withFileTypes: true });
+    for (const entry of entries) {
+      const fullPath = path.join(dir, entry.name);
+      if (entry.isFile() && entry.name.toLowerCase() === name.toLowerCase()) {
+        return fullPath;
+      }
+      if (entry.isDirectory()) {
+        const found = findExecutable(fullPath, name);
+        if (found) return found;
       }
     }
-  }
+  } catch (e) {}
+  return null;
 }
 
-if (!playwright) {
-  error('[LAUNCHER] КРИТИЧЕСКАЯ ОШИБКА: Playwright не найден!');
-  process.exit(1);
-}
+// ─── FINGERPRINT CONFIG GENERATOR ─────────────────────────────────────
+// Generates a realistic Firefox fingerprint for Camoufox
+// (based on DonutBrowser's browserforge approach)
 
-// ─── BROWSER ENGINE RESOLVER ──────────────────────────────────────────
-function getBrowserEngine(engineName) {
-  // Используем только Chromium — максимальная стабильность и совместимость
-  return { engine: playwright.chromium, name: 'chromium', isChromium: true, isFirefox: false, isWebKit: false };
-}
-
-// ─── ENSURE BROWSER INSTALLED ─────────────────────────────────────────
-async function ensureBrowserInstalled(browserInfo) {
-  try {
-    const execPath = browserInfo.engine.executablePath();
-    if (fs.existsSync(execPath)) {
-      log(`[LAUNCHER] ✅ ${browserInfo.name} найден:`, execPath);
-      return;
-    }
-    throw new Error('not found');
-  } catch (e) {
-    log(`[LAUNCHER] ${browserInfo.name} не найден, устанавливаем...`);
-    try {
-      const { execSync } = require('child_process');
-      execSync(`npx playwright install ${browserInfo.name}`, {
-        stdio: 'inherit',
-        env: { ...process.env, PLAYWRIGHT_BROWSERS_PATH: browserCachePath }
-      });
-      log(`[LAUNCHER] ✅ ${browserInfo.name} установлен!`);
-    } catch (installErr) {
-      throw new Error(`Не удалось установить ${browserInfo.name}: ${installErr.message}`);
-    }
-  }
-}
-
-// ─── CHROMIUM STEALTH ARGS ────────────────────────────────────────────
-function getChromiumStealthArgs() {
+function getWindowsFonts() {
   return [
-    '--disable-blink-features=AutomationControlled',
-    '--disable-features=UserAgentClientHint',
-    '--no-first-run',
-    '--no-default-browser-check',
-    '--password-store=basic',
-    '--disable-component-extensions-with-background-pages',
-    '--disable-default-apps',
-    '--mute-audio',
-    '--disable-background-networking',
-    '--disable-background-timer-throttling',
-    '--disable-backgrounding-occluded-windows',
-    '--disable-breakpad',
-    '--disable-client-side-phishing-detection',
-    '--disable-component-update',
-    '--disable-domain-reliability',
-    '--disable-features=TranslateUI',
-    '--disable-hang-monitor',
-    '--disable-ipc-flooding-protection',
-    '--disable-prompt-on-repost',
-    '--disable-renderer-backgrounding',
-    '--disable-sync',
-    '--metrics-recording-only',
-    '--disable-dev-shm-usage',
-    '--ignore-certificate-errors',
-    // Минимизация DNS leak через DNS over HTTPS
-    '--enable-features=DnsOverHttps',
-    '--dns-over-https-server=https://1.1.1.1/dns-query',
+    'Arial', 'Arial Black', 'Calibri', 'Cambria', 'Cambria Math', 'Candara',
+    'Comic Sans MS', 'Consolas', 'Constantia', 'Corbel', 'Courier New',
+    'Ebrima', 'Franklin Gothic Medium', 'Gabriola', 'Gadugi', 'Georgia',
+    'Impact', 'Ink Free', 'Javanese Text', 'Leelawadee UI', 'Lucida Console',
+    'Lucida Sans Unicode', 'Malgun Gothic', 'Microsoft Himalaya', 'Microsoft JhengHei',
+    'Microsoft New Tai Lue', 'Microsoft PhagsPa', 'Microsoft Sans Serif',
+    'Microsoft Tai Le', 'Microsoft YaHei', 'Microsoft Yi Baiti', 'MingLiU-ExtB',
+    'Mongolian Baiti', 'MV Boli', 'Myanmar Text', 'Nirmala UI', 'Palatino Linotype',
+    'Segoe MDL2 Assets', 'Segoe Print', 'Segoe Script', 'Segoe UI',
+    'Segoe UI Historic', 'Segoe UI Emoji', 'Segoe UI Symbol',
+    'SimSun', 'Sitka Banner', 'Sitka Display', 'Sitka Heading', 'Sitka Small',
+    'Sitka Subheading', 'Sitka Text', 'Sylfaen', 'Symbol', 'Tahoma',
+    'Times New Roman', 'Trebuchet MS', 'Verdana', 'Webdings', 'Wingdings',
+    'Yu Gothic'
   ];
 }
 
-// ─── ANTIDETECT INIT SCRIPT (DESKTOP) ─────────────────────────────────
-function buildDesktopAntidetectScript(payload) {
-  const ad = payload.antidetect || {};
-  const hwConcurrency = ad.hardwareConcurrency || 8;
-  const devMemory = ad.deviceMemory || 8;
+function getMacFonts() {
+  return [
+    'American Typewriter', 'Andale Mono', 'Arial', 'Arial Black', 'Arial Narrow',
+    'Arial Rounded MT Bold', 'Avenir', 'Avenir Next', 'Avenir Next Condensed',
+    'Baskerville', 'Big Caslon', 'Bodoni 72', 'Bodoni 72 Oldstyle',
+    'Bodoni 72 Smallcaps', 'Bradley Hand', 'Brush Script MT', 'Chalkboard',
+    'Chalkboard SE', 'Chalkduster', 'Charter', 'Cochin', 'Comic Sans MS',
+    'Copperplate', 'Courier', 'Courier New', 'DIN Alternate', 'DIN Condensed',
+    'Didot', 'Futura', 'Geneva', 'Georgia', 'Gill Sans', 'Helvetica',
+    'Helvetica Neue', 'Herculanum', 'Hoefler Text', 'Impact', 'Lucida Grande',
+    'Luminari', 'Marker Felt', 'Menlo', 'Monaco', 'Noteworthy', 'Optima',
+    'Palatino', 'Papyrus', 'Phosphate', 'Rockwell', 'SF Pro', 'SF Pro Display',
+    'SF Pro Rounded', 'SF Pro Text', 'Savoye LET', 'SignPainter',
+    'Skia', 'Snell Roundhand', 'Times', 'Times New Roman', 'Trattatello',
+    'Trebuchet MS', 'Verdana', 'Zapfino'
+  ];
+}
+
+function getLinuxFonts() {
+  return [
+    'C059', 'Cantarell', 'D050000L', 'DejaVu Math TeX Gyre',
+    'DejaVu Sans', 'DejaVu Sans Mono', 'DejaVu Serif', 'Droid Sans',
+    'Droid Sans Mono', 'Droid Serif', 'Liberation Mono', 'Liberation Sans',
+    'Liberation Sans Narrow', 'Liberation Serif', 'Nimbus Mono PS',
+    'Nimbus Roman', 'Nimbus Sans', 'Nimbus Sans Narrow', 'Noto Color Emoji',
+    'Noto Mono', 'Noto Sans', 'Noto Sans Mono', 'Noto Serif', 'P052',
+    'Roboto', 'Standard Symbols PS', 'Ubuntu', 'Ubuntu Condensed',
+    'Ubuntu Mono', 'URW Bookman', 'URW Gothic', 'Z003'
+  ];
+}
+
+function getFontsForOS(osName) {
+  switch (osName) {
+    case 'windows': return getWindowsFonts();
+    case 'macos': return getMacFonts();
+    case 'linux': return getLinuxFonts();
+    default: return getWindowsFonts();
+  }
+}
+
+// Common screen resolutions with market share weighting
+const SCREEN_PRESETS = [
+  { w: 1920, h: 1080, weight: 40 },
+  { w: 1366, h: 768,  weight: 15 },
+  { w: 2560, h: 1440, weight: 12 },
+  { w: 1536, h: 864,  weight: 8 },
+  { w: 1440, h: 900,  weight: 6 },
+  { w: 1680, h: 1050, weight: 5 },
+  { w: 1280, h: 720,  weight: 4 },
+  { w: 1600, h: 900,  weight: 4 },
+  { w: 3840, h: 2160, weight: 3 },
+  { w: 2560, h: 1600, weight: 3 },
+];
+
+function pickWeightedScreen() {
+  const totalWeight = SCREEN_PRESETS.reduce((s, p) => s + p.weight, 0);
+  let r = Math.random() * totalWeight;
+  for (const p of SCREEN_PRESETS) {
+    r -= p.weight;
+    if (r <= 0) return { width: p.w, height: p.h };
+  }
+  return { width: 1920, height: 1080 };
+}
+
+// WebGL vendor/renderer pairs (realistic for Windows)
+const WEBGL_PRESETS_WIN = [
+  { vendor: 'Google Inc. (Intel)', renderer: 'ANGLE (Intel, Intel(R) UHD Graphics 630 Direct3D11 vs_5_0 ps_5_0, D3D11)' },
+  { vendor: 'Google Inc. (Intel)', renderer: 'ANGLE (Intel, Intel(R) UHD Graphics 770 Direct3D11 vs_5_0 ps_5_0, D3D11)' },
+  { vendor: 'Google Inc. (Intel)', renderer: 'ANGLE (Intel, Intel(R) Iris(R) Xe Graphics Direct3D11 vs_5_0 ps_5_0, D3D11)' },
+  { vendor: 'Google Inc. (NVIDIA)', renderer: 'ANGLE (NVIDIA, NVIDIA GeForce GTX 1650 Direct3D11 vs_5_0 ps_5_0, D3D11)' },
+  { vendor: 'Google Inc. (NVIDIA)', renderer: 'ANGLE (NVIDIA, NVIDIA GeForce RTX 3060 Direct3D11 vs_5_0 ps_5_0, D3D11)' },
+  { vendor: 'Google Inc. (NVIDIA)', renderer: 'ANGLE (NVIDIA, NVIDIA GeForce RTX 4060 Direct3D11 vs_5_0 ps_5_0, D3D11)' },
+  { vendor: 'Google Inc. (AMD)', renderer: 'ANGLE (AMD, AMD Radeon RX 580 Series Direct3D11 vs_5_0 ps_5_0, D3D11)' },
+  { vendor: 'Google Inc. (AMD)', renderer: 'ANGLE (AMD, AMD Radeon(TM) Graphics Direct3D11 vs_5_0 ps_5_0, D3D11)' },
+];
+
+const WEBGL_PRESETS_MAC = [
+  { vendor: 'Apple', renderer: 'Apple M1' },
+  { vendor: 'Apple', renderer: 'Apple M2' },
+  { vendor: 'Apple', renderer: 'Apple M3' },
+  { vendor: 'Intel Inc.', renderer: 'Intel Iris Plus Graphics 640' },
+  { vendor: 'Intel Inc.', renderer: 'Intel(R) UHD Graphics 630' },
+];
+
+function pickWebGL(osName) {
+  const presets = osName === 'macos' ? WEBGL_PRESETS_MAC : WEBGL_PRESETS_WIN;
+  return presets[Math.floor(Math.random() * presets.length)];
+}
+
+function generateFirefoxUA(osName) {
+  const ffVersion = '135.0';
+  const platforms = {
+    windows: `Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:${ffVersion}) Gecko/20100101 Firefox/${ffVersion}`,
+    macos: `Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:${ffVersion}) Gecko/20100101 Firefox/${ffVersion}`,
+    linux: `Mozilla/5.0 (X11; Linux x86_64; rv:${ffVersion}) Gecko/20100101 Firefox/${ffVersion}`,
+  };
+  return platforms[osName] || platforms.windows;
+}
+
+function generateFingerprintConfig(payload) {
   const osName = (payload.os || 'windows').toLowerCase();
-  const browserType = (payload.browserType || 'chromium').toLowerCase();
-  const isChromium = browserType === 'chromium' || browserType === 'webkit';
-
-  let platform = 'Win32';
-  if (osName === 'macos') platform = 'MacIntel';
-  else if (osName === 'linux') platform = 'Linux x86_64';
-
-  return `
-    // ═══ AEZAKMI Desktop Antidetect v2.1.0 ═══
-    
-    // Удаляем webdriver флаг
-    Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
-    try { delete navigator.__webdriver_script_fn; } catch(e) {}
-    try { delete navigator.__proto__.webdriver; } catch(e) {}
-    
-    // Permissions API
-    const _origQuery = window.navigator.permissions.query;
-    window.navigator.permissions.query = (p) => (
-      p.name === 'notifications' ? Promise.resolve({ state: Notification.permission }) : _origQuery(p)
-    );
-    
-    // Platform
-    Object.defineProperty(navigator, 'platform', { get: () => '${platform}' });
-    
-    // Hardware
-    Object.defineProperty(navigator, 'hardwareConcurrency', { get: () => ${hwConcurrency} });
-    Object.defineProperty(navigator, 'deviceMemory', { get: () => ${devMemory} });
-    
-    // Touch points (desktop = 0)
-    Object.defineProperty(navigator, 'maxTouchPoints', { get: () => 0 });
-    
-    ${isChromium ? `
-    // Chrome plugins
-    Object.defineProperty(navigator, 'plugins', {
-      get: () => {
-        const p = [
-          { 0: {type:"application/x-google-chrome-pdf",suffixes:"pdf",description:"PDF"}, description:"PDF", filename:"internal-pdf-viewer", length:1, name:"Chrome PDF Plugin" },
-          { 0: {type:"application/pdf",suffixes:"pdf",description:""}, description:"", filename:"mhjfbmdgcfjbbpaeojofohoefgiehjai", length:1, name:"Chrome PDF Viewer" },
-        ];
-        p.length = 2;
-        p.item = (i) => p[i] || null;
-        p.namedItem = (n) => p.find(x => x.name === n) || null;
-        p.refresh = () => {};
-        return p;
-      }
-    });
-    
-    // Chrome runtime
-    window.chrome = { runtime: {}, loadTimes: function(){}, csi: function(){}, app: {} };
-    ` : ''}
-    
-    // Languages
-    Object.defineProperty(navigator, 'languages', { get: () => ['ru-RU','ru','en-US','en'] });
-    
-    // ── WebGL vendor/renderer spoofing ──
-    ${ad.webgl?.noise !== false ? `
-    (function() {
-      const vendor = '${(ad.webgl?.vendor || 'Intel Inc.').replace(/'/g, "\\'")}';
-      const renderer = '${(ad.webgl?.renderer || 'Intel Iris OpenGL Engine').replace(/'/g, "\\'")}';
-      
-      const _getParameter = WebGLRenderingContext.prototype.getParameter;
-      WebGLRenderingContext.prototype.getParameter = function(param) {
-        if (param === 0x9245 || param === 37445) return vendor;
-        if (param === 0x9246 || param === 37446) return renderer;
-        return _getParameter.call(this, param);
-      };
-      
-      if (typeof WebGL2RenderingContext !== 'undefined') {
-        const _getParameter2 = WebGL2RenderingContext.prototype.getParameter;
-        WebGL2RenderingContext.prototype.getParameter = function(param) {
-          if (param === 0x9245 || param === 37445) return vendor;
-          if (param === 0x9246 || param === 37446) return renderer;
-          return _getParameter2.call(this, param);
-        };
-      }
-    })();
-    ` : ''}
-    
-    // ── Screen dimensions spoofing (desktop) ──
-    ${payload.screen ? `
-    (function() {
-      const sw = ${payload.screen.width || 1920};
-      const sh = ${payload.screen.height || 1080};
-      Object.defineProperty(screen, 'width', { get: () => sw });
-      Object.defineProperty(screen, 'height', { get: () => sh });
-      Object.defineProperty(screen, 'availWidth', { get: () => sw });
-      Object.defineProperty(screen, 'availHeight', { get: () => sh });
-      Object.defineProperty(screen, 'colorDepth', { get: () => 24 });
-      Object.defineProperty(screen, 'pixelDepth', { get: () => 24 });
-    })();
-    ` : ''}
-    
-    // Hide toString proxy
-    const _origToStr = Function.prototype.toString;
-    Function.prototype.toString = function() {
-      if (this === window.navigator.permissions.query) return 'function query() { [native code] }';
-      return _origToStr.apply(this, arguments);
-    };
-    
-    // Battery API (desktop)
-    if (navigator.getBattery) {
-      navigator.getBattery = () => Promise.resolve({
-        charging: true, chargingTime: 0, dischargingTime: Infinity, level: 1.0,
-        addEventListener: ()=>{}, removeEventListener: ()=>{}, dispatchEvent: ()=>true,
-        onchargingchange: null, onchargingtimechange: null, ondischargingtimechange: null, onlevelchange: null,
-      });
-    }
-    
-    // WebRTC protection
-    ${ad.webrtc?.block !== false ? `
-    if (window.RTCPeerConnection) {
-      const _RTC = window.RTCPeerConnection;
-      window.RTCPeerConnection = function(...args) {
-        const pc = new _RTC(...args);
-        const _addIce = pc.addIceCandidate;
-        pc.addIceCandidate = function(c) {
-          if (c && c.candidate && c.candidate.includes('.local')) return Promise.resolve();
-          return _addIce.apply(this, arguments);
-        };
-        return pc;
-      };
-      window.RTCPeerConnection.prototype = _RTC.prototype;
-    }
-    ` : ''}
-    
-    // Canvas noise
-    ${ad.canvas?.noise !== false ? `
-    (function() {
-      const _toDataURL = HTMLCanvasElement.prototype.toDataURL;
-      const _toBlob = HTMLCanvasElement.prototype.toBlob;
-      const _getImageData = CanvasRenderingContext2D.prototype.getImageData;
-      const shift = { r: Math.floor(Math.random()*10)-5, g: Math.floor(Math.random()*10)-5, b: Math.floor(Math.random()*10)-5, a: Math.floor(Math.random()*10)-5 };
-      function addNoise(canvas, ctx) {
-        if (!canvas.width || !canvas.height) return;
-        try {
-          const d = _getImageData.call(ctx, 0, 0, canvas.width, canvas.height);
-          for (let i = 0; i < d.data.length; i += 4) { d.data[i]+=shift.r; d.data[i+1]+=shift.g; d.data[i+2]+=shift.b; d.data[i+3]+=shift.a; }
-          ctx.putImageData(d, 0, 0);
-        } catch(e) {}
-      }
-      HTMLCanvasElement.prototype.toDataURL = function() { try { addNoise(this, this.getContext('2d')); } catch(e) {} return _toDataURL.apply(this, arguments); };
-      HTMLCanvasElement.prototype.toBlob = function() { try { addNoise(this, this.getContext('2d')); } catch(e) {} return _toBlob.apply(this, arguments); };
-    })();
-    ` : ''}
-    
-    // Audio noise
-    ${ad.audio?.noise !== false ? `
-    (function() {
-      const AC = window.AudioContext || window.webkitAudioContext;
-      if (!AC) return;
-      const _createAnalyser = AC.prototype.createAnalyser;
-      AC.prototype.createAnalyser = function() {
-        const an = _createAnalyser.apply(this, arguments);
-        const _getFloat = an.getFloatFrequencyData;
-        an.getFloatFrequencyData = function(arr) { _getFloat.apply(this, arguments); for(let i=0;i<arr.length;i++) arr[i]+=Math.random()*0.0001; };
-        return an;
-      };
-    })();
-    ` : ''}
-    
-    // UserAgent cleanup
-    const _ua = navigator.userAgent;
-    if (_ua.includes('Headless')) {
-      Object.defineProperty(navigator, 'userAgent', { get: () => _ua.replace('Headless','') });
-    }
-  `;
-}
-
-// ─── MOBILE FINGERPRINT INJECTION ─────────────────────────────────────
-function buildMobileAntidetectScript(payload) {
-  const mobile = payload.mobileEmulation || {};
+  const screen = payload.screen || pickWeightedScreen();
+  const locale = payload.locale || 'en-US';
+  const langBase = locale.split('-')[0];
   const ad = payload.antidetect || {};
-  const deviceName = mobile.deviceName || 'Generic Mobile';
-  const isIOS = deviceName.toLowerCase().includes('iphone') || deviceName.toLowerCase().includes('ipad');
-  const isAndroid = !isIOS;
-  const touchPoints = mobile.hasTouch ? 5 : 0;
-  const dpr = mobile.deviceScaleFactor || 3;
-  const screenW = mobile.width || 390;
-  const screenH = mobile.height || 844;
-  const mobileUA = mobile.userAgent || payload.userAgent || '';
-  const hwConcurrency = isIOS ? 6 : (ad.hardwareConcurrency || 4);
-  const devMemory = isIOS ? 4 : (ad.deviceMemory || 4);
-  const browserType = (payload.browserType || 'chromium').toLowerCase();
-  const isChromium = browserType === 'chromium' || browserType === 'webkit';
+  const webgl = pickWebGL(osName);
 
-  let platform = isIOS ? (deviceName.includes('iPad') ? 'iPad' : 'iPhone') : 'Linux armv81';
+  // Taskbar offset for availHeight
+  const taskbarHeight = osName === 'windows' ? 40 : (osName === 'macos' ? 25 : 30);
+  const availHeight = screen.height - taskbarHeight;
 
-  return `
-    // ═══ AEZAKMI Mobile Fingerprint v2.1.0 ═══
-    // Device: ${deviceName} | Platform: ${platform} | Touch: ${touchPoints}
-    
-    // ── Core navigator overrides ──
-    Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
-    try { delete navigator.__webdriver_script_fn; } catch(e) {}
-    try { delete navigator.__proto__.webdriver; } catch(e) {}
-    
-    // Platform
-    Object.defineProperty(navigator, 'platform', { get: () => '${platform}' });
-    
-    // User Agent
-    ${mobileUA ? `Object.defineProperty(navigator, 'userAgent', { get: () => '${mobileUA.replace(/'/g, "\\'")}' });` : ''}
-    
-    // Touch points (CRITICAL for mobile detection)
-    Object.defineProperty(navigator, 'maxTouchPoints', { get: () => ${touchPoints} });
-    
-    // Hardware
-    Object.defineProperty(navigator, 'hardwareConcurrency', { get: () => ${hwConcurrency} });
-    Object.defineProperty(navigator, 'deviceMemory', { get: () => ${devMemory} });
-    
-    // ── Touch events support ──
-    if (!('ontouchstart' in window)) {
-      window.ontouchstart = null;
-      window.ontouchmove = null;
-      window.ontouchend = null;
-      window.ontouchcancel = null;
-    }
-    
-    // Ensure TouchEvent constructor exists
-    if (typeof TouchEvent === 'undefined') {
-      window.TouchEvent = class TouchEvent extends UIEvent {
-        constructor(type, init) {
-          super(type, init);
-          this.touches = init?.touches || [];
-          this.targetTouches = init?.targetTouches || [];
-          this.changedTouches = init?.changedTouches || [];
-        }
-      };
-    }
-    
-    // Ensure Touch constructor exists
-    if (typeof Touch === 'undefined') {
-      window.Touch = class Touch {
-        constructor(init) {
-          this.identifier = init?.identifier || 0;
-          this.target = init?.target || null;
-          this.clientX = init?.clientX || 0;
-          this.clientY = init?.clientY || 0;
-          this.pageX = init?.pageX || 0;
-          this.pageY = init?.pageY || 0;
-          this.screenX = init?.screenX || 0;
-          this.screenY = init?.screenY || 0;
-          this.radiusX = init?.radiusX || 0;
-          this.radiusY = init?.radiusY || 0;
-          this.rotationAngle = init?.rotationAngle || 0;
-          this.force = init?.force || 0;
-        }
-      };
-    }
-    
-    // ── Screen dimensions ──
-    Object.defineProperty(screen, 'width', { get: () => ${screenW} });
-    Object.defineProperty(screen, 'height', { get: () => ${screenH} });
-    Object.defineProperty(screen, 'availWidth', { get: () => ${screenW} });
-    Object.defineProperty(screen, 'availHeight', { get: () => ${screenH} });
-    Object.defineProperty(screen, 'colorDepth', { get: () => 24 });
-    Object.defineProperty(screen, 'pixelDepth', { get: () => 24 });
-    Object.defineProperty(window, 'devicePixelRatio', { get: () => ${dpr} });
-    
-    // ── Screen Orientation API ──
-    if (!screen.orientation || screen.orientation.type !== 'portrait-primary') {
-      Object.defineProperty(screen, 'orientation', {
-        get: () => ({
-          type: 'portrait-primary',
-          angle: 0,
-          lock: () => Promise.resolve(),
-          unlock: () => {},
-          addEventListener: () => {},
-          removeEventListener: () => {},
-          dispatchEvent: () => true,
-          onchange: null,
-        })
-      });
-    }
-    
-    // Legacy window.orientation
-    Object.defineProperty(window, 'orientation', { get: () => 0 });
-    window.onorientationchange = null;
-    
-    // ── UserAgentData (mobile: true) ──
-    ${isChromium ? `
-    if (navigator.userAgentData) {
-      const _uaData = navigator.userAgentData;
-      Object.defineProperty(navigator, 'userAgentData', {
-        get: () => ({
-          brands: _uaData.brands || [{brand:'Chromium',version:'120'},{brand:'Google Chrome',version:'120'}],
-          mobile: true,
-          platform: '${isIOS ? 'iOS' : 'Android'}',
-          getHighEntropyValues: (hints) => Promise.resolve({
-            brands: _uaData.brands || [{brand:'Chromium',version:'120'}],
-            mobile: true,
-            platform: '${isIOS ? 'iOS' : 'Android'}',
-            platformVersion: '${isIOS ? '17.0' : '13.0'}',
-            architecture: '${isIOS ? '' : 'arm'}',
-            bitness: '${isIOS ? '' : '64'}',
-            model: '${deviceName.replace(/'/g, "\\'")}',
-            uaFullVersion: '120.0.0.0',
-            fullVersionList: [{brand:'Chromium',version:'120.0.0.0'},{brand:'Google Chrome',version:'120.0.0.0'}],
-          }),
-          toJSON: () => ({ brands: [{brand:'Chromium',version:'120'}], mobile: true, platform: '${isIOS ? 'iOS' : 'Android'}' }),
-        })
-      });
-    }
-    ` : ''}
-    
-    // ── Network Information API (mobile) ──
-    if (!navigator.connection) {
-      Object.defineProperty(navigator, 'connection', {
-        get: () => ({
-          effectiveType: '4g',
-          type: 'cellular',
-          downlink: ${(8 + Math.random() * 12).toFixed(1)},
-          downlinkMax: Infinity,
-          rtt: ${Math.floor(50 + Math.random() * 100)},
-          saveData: false,
-          onchange: null,
-          ontypechange: null,
-          addEventListener: () => {},
-          removeEventListener: () => {},
-          dispatchEvent: () => true,
-        })
-      });
-    } else {
-      try {
-        Object.defineProperty(navigator.connection, 'effectiveType', { get: () => '4g' });
-        Object.defineProperty(navigator.connection, 'type', { get: () => 'cellular' });
-      } catch(e) {}
-    }
-    
-    // ── Battery API (realistic mobile) ──
-    const batteryLevel = ${(0.3 + Math.random() * 0.6).toFixed(2)};
-    const batteryCharging = ${Math.random() > 0.5};
-    if (navigator.getBattery) {
-      navigator.getBattery = () => Promise.resolve({
-        charging: batteryCharging,
-        chargingTime: batteryCharging ? ${Math.floor(300 + Math.random() * 3600)} : Infinity,
-        dischargingTime: batteryCharging ? Infinity : ${Math.floor(3600 + Math.random() * 14400)},
-        level: batteryLevel,
-        addEventListener: ()=>{}, removeEventListener: ()=>{}, dispatchEvent: ()=>true,
-        onchargingchange: null, onchargingtimechange: null, ondischargingtimechange: null, onlevelchange: null,
-      });
-    }
-    
-    // ── DeviceOrientation & DeviceMotion events ──
-    if (typeof DeviceOrientationEvent === 'undefined') {
-      window.DeviceOrientationEvent = class DeviceOrientationEvent extends Event {
-        constructor(type, init) {
-          super(type, init);
-          this.alpha = init?.alpha || null;
-          this.beta = init?.beta || null;
-          this.gamma = init?.gamma || null;
-          this.absolute = init?.absolute || false;
-        }
-      };
-    }
-    if (typeof DeviceMotionEvent === 'undefined') {
-      window.DeviceMotionEvent = class DeviceMotionEvent extends Event {
-        constructor(type, init) {
-          super(type, init);
-          this.acceleration = init?.acceleration || null;
-          this.accelerationIncludingGravity = init?.accelerationIncludingGravity || null;
-          this.rotationRate = init?.rotationRate || null;
-          this.interval = init?.interval || 16;
-        }
-      };
-    }
-    
-    // ── CSS Media Query overrides ──
-    const _matchMedia = window.matchMedia;
-    window.matchMedia = function(query) {
-      // Mobile: pointer is coarse (finger), hover is none
-      if (query === '(hover: none)' || query === '(hover:none)') return { matches: true, media: query, onchange: null, addListener: ()=>{}, removeListener: ()=>{}, addEventListener: ()=>{}, removeEventListener: ()=>{}, dispatchEvent: ()=>true };
-      if (query === '(hover: hover)' || query === '(hover:hover)') return { matches: false, media: query, onchange: null, addListener: ()=>{}, removeListener: ()=>{}, addEventListener: ()=>{}, removeEventListener: ()=>{}, dispatchEvent: ()=>true };
-      if (query === '(pointer: coarse)' || query === '(pointer:coarse)') return { matches: true, media: query, onchange: null, addListener: ()=>{}, removeListener: ()=>{}, addEventListener: ()=>{}, removeEventListener: ()=>{}, dispatchEvent: ()=>true };
-      if (query === '(pointer: fine)' || query === '(pointer:fine)') return { matches: false, media: query, onchange: null, addListener: ()=>{}, removeListener: ()=>{}, addEventListener: ()=>{}, removeEventListener: ()=>{}, dispatchEvent: ()=>true };
-      if (query === '(any-pointer: coarse)' || query === '(any-pointer:coarse)') return { matches: true, media: query, onchange: null, addListener: ()=>{}, removeListener: ()=>{}, addEventListener: ()=>{}, removeEventListener: ()=>{}, dispatchEvent: ()=>true };
-      if (query === '(any-hover: none)' || query === '(any-hover:none)') return { matches: true, media: query, onchange: null, addListener: ()=>{}, removeListener: ()=>{}, addEventListener: ()=>{}, removeEventListener: ()=>{}, dispatchEvent: ()=>true };
-      return _matchMedia.call(window, query);
-    };
-    
-    // ── Visual Viewport API ──
-    if (!window.visualViewport) {
-      window.visualViewport = {
-        width: ${screenW}, height: ${screenH}, offsetLeft: 0, offsetTop: 0,
-        pageLeft: 0, pageTop: 0, scale: 1.0,
-        onresize: null, onscroll: null,
-        addEventListener: ()=>{}, removeEventListener: ()=>{}, dispatchEvent: ()=>true,
-      };
-    }
-    
-    ${isIOS ? `
-    // ── iOS-specific: standalone mode indicator ──
-    Object.defineProperty(navigator, 'standalone', { get: () => false });
-    ` : ''}
-    
-    // ── Permissions API ──
-    const _origPQ = window.navigator.permissions.query;
-    window.navigator.permissions.query = (p) => (
-      p.name === 'notifications' ? Promise.resolve({ state: Notification.permission }) : _origPQ(p)
-    );
-    
-    // Languages
-    Object.defineProperty(navigator, 'languages', { get: () => ['ru-RU','ru','en-US','en'] });
-    
-    ${isChromium ? `
-    // Chrome plugins (mobile = empty)
-    Object.defineProperty(navigator, 'plugins', { get: () => { const p = []; p.length = 0; p.item = () => null; p.namedItem = () => null; p.refresh = () => {}; return p; } });
-    window.chrome = { runtime: {}, loadTimes: function(){}, csi: function(){}, app: {} };
-    ` : ''}
-    
-    // Hide toString
-    const _ts = Function.prototype.toString;
-    Function.prototype.toString = function() {
-      if (this === window.navigator.permissions.query) return 'function query() { [native code] }';
-      if (this === window.matchMedia) return 'function matchMedia() { [native code] }';
-      if (this === navigator.getBattery) return 'function getBattery() { [native code] }';
-      return _ts.apply(this, arguments);
-    };
-    
-    // WebRTC protection
-    ${ad.webrtc?.block !== false ? `
-    if (window.RTCPeerConnection) {
-      const _RTC = window.RTCPeerConnection;
-      window.RTCPeerConnection = function(...args) {
-        const pc = new _RTC(...args);
-        const _ai = pc.addIceCandidate;
-        pc.addIceCandidate = function(c) { if(c&&c.candidate&&c.candidate.includes('.local')) return Promise.resolve(); return _ai.apply(this,arguments); };
-        return pc;
-      };
-      window.RTCPeerConnection.prototype = _RTC.prototype;
-    }
-    ` : ''}
-    
-    // Canvas noise
-    ${ad.canvas?.noise !== false ? `
-    (function() {
-      const _td = HTMLCanvasElement.prototype.toDataURL;
-      const _tb = HTMLCanvasElement.prototype.toBlob;
-      const _gid = CanvasRenderingContext2D.prototype.getImageData;
-      const s = { r:Math.floor(Math.random()*10)-5, g:Math.floor(Math.random()*10)-5, b:Math.floor(Math.random()*10)-5, a:Math.floor(Math.random()*10)-5 };
-      function n(c,x) { if(!c.width||!c.height)return; try { const d=_gid.call(x,0,0,c.width,c.height); for(let i=0;i<d.data.length;i+=4){d.data[i]+=s.r;d.data[i+1]+=s.g;d.data[i+2]+=s.b;d.data[i+3]+=s.a;} x.putImageData(d,0,0); } catch(e){} }
-      HTMLCanvasElement.prototype.toDataURL = function() { try{n(this,this.getContext('2d'));}catch(e){} return _td.apply(this,arguments); };
-      HTMLCanvasElement.prototype.toBlob = function() { try{n(this,this.getContext('2d'));}catch(e){} return _tb.apply(this,arguments); };
-    })();
-    ` : ''}
-    
-    // Audio noise
-    ${ad.audio?.noise !== false ? `
-    (function() { const AC=window.AudioContext||window.webkitAudioContext; if(!AC)return; const _ca=AC.prototype.createAnalyser; AC.prototype.createAnalyser=function(){const a=_ca.apply(this,arguments);const _g=a.getFloatFrequencyData;a.getFloatFrequencyData=function(r){_g.apply(this,arguments);for(let i=0;i<r.length;i++)r[i]+=Math.random()*0.0001;};return a;}; })();
-    ` : ''}
-  `;
+  // Window dimensions (slightly smaller than screen)
+  const outerWidth = screen.width;
+  const outerHeight = availHeight;
+  const innerWidth = outerWidth - 17; // scrollbar
+  const innerHeight = outerHeight - 71; // toolbar + tabs
+
+  const config = {
+    // Navigator
+    'navigator.userAgent': generateFirefoxUA(osName),
+    'navigator.platform': osName === 'windows' ? 'Win32' : (osName === 'macos' ? 'MacIntel' : 'Linux x86_64'),
+    'navigator.hardwareConcurrency': ad.hardwareConcurrency || [4, 6, 8, 12, 16][Math.floor(Math.random() * 5)],
+    'navigator.language': locale,
+    'navigator.languages': locale.startsWith('en')
+      ? ['en-US', 'en']
+      : [locale, langBase, 'en-US', 'en'],
+
+    // Screen
+    'screen.width': screen.width,
+    'screen.height': screen.height,
+    'screen.availWidth': screen.width,
+    'screen.availHeight': availHeight,
+    'screen.colorDepth': 24,
+    'screen.pixelDepth': 24,
+    'screen.outerWidth': outerWidth,
+    'screen.outerHeight': outerHeight,
+    'screen.innerWidth': innerWidth,
+    'screen.innerHeight': innerHeight,
+
+    // Window
+    'window.screenX': 0,
+    'window.screenY': 0,
+    'window.history.length': Math.floor(Math.random() * 5) + 1,
+
+    // Fonts
+    'fonts': getFontsForOS(osName),
+    'fonts:spacing_seed': Math.floor(Math.random() * 1073741824),
+
+    // Canvas anti-fingerprinting
+    'canvas:aaOffset': Math.floor(Math.random() * 101) - 50,
+    'canvas:aaCapOffset': true,
+
+    // Theme
+    'disableTheming': true,
+    'showcursor': false,
+  };
+
+  // WebGL
+  if (ad.webgl?.noise !== false) {
+    config['webgl:vendor'] = webgl.vendor;
+    config['webgl:renderer'] = webgl.renderer;
+  }
+
+  return config;
 }
 
-// ─── MAIN LAUNCH FUNCTION ─────────────────────────────────────────────
+// ─── Config → CAMOU_CONFIG_* env vars ────────────────────────────────
+function configToEnvVars(config) {
+  const json = JSON.stringify(config);
+  const chunkSize = 2047; // Windows env var max size
+  const envVars = {};
+  for (let i = 0; i < json.length; i += chunkSize) {
+    const chunk = json.substring(i, i + chunkSize);
+    envVars[`CAMOU_CONFIG_${Math.floor(i / chunkSize) + 1}`] = chunk;
+  }
+  return envVars;
+}
+
+// ─── Write Firefox proxy prefs to profile user.js ─────────────────────
+function writeProxyPrefs(profileDir, proxyHost, proxyPort, proxyType) {
+  const userJsPath = path.join(profileDir, 'user.js');
+  let existing = '';
+  try { existing = fs.readFileSync(userJsPath, 'utf8'); } catch (e) {}
+  // Remove old proxy lines
+  existing = existing.split('\n')
+    .filter(l => !l.includes('network.proxy.'))
+    .join('\n');
+
+  // proxyType: 1 = manual config
+  const isSocks = proxyType === 'socks';
+  let proxyPrefs;
+  if (isSocks) {
+    proxyPrefs = `
+// === AEZAKMI Proxy Settings ===
+user_pref("network.proxy.type", 1);
+user_pref("network.proxy.socks", "${proxyHost}");
+user_pref("network.proxy.socks_port", ${proxyPort});
+user_pref("network.proxy.socks_version", 5);
+user_pref("network.proxy.socks_remote_dns", true);
+user_pref("network.proxy.no_proxies_on", "");
+`;
+  } else {
+    proxyPrefs = `
+// === AEZAKMI Proxy Settings ===
+user_pref("network.proxy.type", 1);
+user_pref("network.proxy.http", "${proxyHost}");
+user_pref("network.proxy.http_port", ${proxyPort});
+user_pref("network.proxy.ssl", "${proxyHost}");
+user_pref("network.proxy.ssl_port", ${proxyPort});
+user_pref("network.proxy.no_proxies_on", "");
+user_pref("network.proxy.allow_hijacking_localhost", true);
+`;
+  }
+
+  fs.writeFileSync(userJsPath, existing.trim() + '\n' + proxyPrefs);
+  log('[CAMOUFOX] Прокси прописан в user.js:', `${proxyHost}:${proxyPort} (${isSocks ? 'socks5' : 'http'})`);
+}
+
+// ─── Clear proxy prefs from profile (when launching without proxy) ────
+function clearProxyPrefs(profileDir) {
+  const userJsPath = path.join(profileDir, 'user.js');
+  let existing = '';
+  try { existing = fs.readFileSync(userJsPath, 'utf8'); } catch (e) { return; }
+  
+  const cleaned = existing.split('\n')
+    .filter(l => !l.includes('network.proxy.') && !l.includes('AEZAKMI Proxy Settings'))
+    .join('\n');
+  
+  // Set proxy type to 0 (direct/no proxy)
+  const noProxy = `\n// === AEZAKMI Proxy Settings ===\nuser_pref("network.proxy.type", 0);\n`;
+  
+  fs.writeFileSync(userJsPath, cleaned.trim() + noProxy);
+  log('[CAMOUFOX] Прокси убран из user.js (direct connection)');
+}
+
+// ─── Write base Firefox prefs for privacy/security ────────────────────
+function writeBasePrefs(profileDir, payload) {
+  const userJsPath = path.join(profileDir, 'user.js');
+  let existing = '';
+  try { existing = fs.readFileSync(userJsPath, 'utf8'); } catch (e) {}
+
+  // Remove old base prefs section
+  existing = existing.replace(/\/\/ === AEZAKMI Base Prefs ===[\s\S]*?(?=\n\/\/ ===|\s*$)/, '');
+
+  const ad = payload.antidetect || {};
+  const basePrefs = [];
+
+  // WebRTC protection
+  if (ad.webrtc?.block !== false) {
+    basePrefs.push('user_pref("media.peerconnection.enabled", false);');
+  }
+
+  // Timezone & locale
+  if (payload.timezoneId) {
+    basePrefs.push(`user_pref("intl.timezone.override", "${payload.timezoneId}");`);
+  }
+  if (payload.locale) {
+    basePrefs.push(`user_pref("intl.accept_languages", "${payload.locale}");`);
+  }
+
+  // Disable telemetry & updates
+  basePrefs.push(
+    'user_pref("app.update.enabled", false);',
+    'user_pref("datareporting.policy.dataSubmissionEnabled", false);',
+    'user_pref("toolkit.telemetry.enabled", false);',
+    'user_pref("browser.newtabpage.activity-stream.feeds.telemetry", false);',
+    'user_pref("browser.ping-centre.telemetry", false);',
+    // Don't show first run
+    'user_pref("browser.startup.homepage_override.mstone", "ignore");',
+    'user_pref("startup.homepage_welcome_url", "");',
+    'user_pref("browser.shell.checkDefaultBrowser", false);',
+    // Disable auto-import
+    'user_pref("browser.migrate.automigrate.enabled", false);',
+    // Ensure we can run without issues
+    'user_pref("browser.tabs.warnOnClose", false);',
+    'user_pref("browser.sessionstore.resume_from_crash", false);',
+    // Allow unsigned extensions (needed for proxy helper extension)
+    'user_pref("xpinstall.signatures.required", false);',
+    'user_pref("extensions.autoDisableScopes", 0);',
+    'user_pref("extensions.enabledScopes", 15);',
+    // Don't show extension install prompts
+    'user_pref("extensions.postDownloadThirdPartyPrompt", false);',
+  );
+
+  if (basePrefs.length > 0) {
+    const block = '\n// === AEZAKMI Base Prefs ===\n' + basePrefs.join('\n') + '\n';
+    fs.writeFileSync(userJsPath, existing.trim() + block);
+  }
+}
+
+// ─── CAMOUFOX LAUNCH ──────────────────────────────────────────────────
+async function launchCamoufox(payload) {
+  log('[CAMOUFOX] ═══════════════════════════════════════');
+  log('[CAMOUFOX] Запуск Camoufox (native antidetect)');
+  logToFile('Launching Camoufox engine');
+
+  // 1. Ensure binary installed
+  await ensureCamoufoxInstalled();
+
+  // Resolve actual exe path (might be in subfolder)
+  let exe = getCamoufoxExe();
+  if (!fs.existsSync(exe)) {
+    const found = findExecutable(getCamoufoxDir(), 'camoufox.exe');
+    if (found) {
+      exe = found;
+    } else {
+      throw new Error(`camoufox.exe не найден в ${getCamoufoxDir()}`);
+    }
+  }
+
+  // 2. Resolve profile dir
+  let profileDir = payload.profileDir || `aezakmi-profile-${Date.now()}`;
+  if (!path.isAbsolute(profileDir)) {
+    const profilesBase = process.env.AEZAKMI_PROFILES_DIR
+      || (process.env.LOCALAPPDATA
+        ? path.join(process.env.LOCALAPPDATA, 'AEZAKMI Pro', 'profiles')
+        : path.join(appDir, 'profiles'));
+    profileDir = path.join(profilesBase, profileDir);
+  }
+  fs.mkdirSync(profileDir, { recursive: true });
+  log('[CAMOUFOX] Профиль:', profileDir);
+
+  // 3. Generate fingerprint config
+  const fpConfig = generateFingerprintConfig(payload);
+  const camoufoxEnv = configToEnvVars(fpConfig);
+  log('[CAMOUFOX] Fingerprint:', JSON.stringify({
+    ua: fpConfig['navigator.userAgent'].substring(0, 60) + '...',
+    screen: `${fpConfig['screen.width']}x${fpConfig['screen.height']}`,
+    locale: fpConfig['navigator.language'],
+    webgl: fpConfig['webgl:renderer'] ? fpConfig['webgl:renderer'].substring(0, 40) : 'default',
+  }));
+
+  // 4. Setup proxy — use Firefox extension for auth, user.js prefs otherwise
+  //    NOTE: camoufox.exe spawns the real browser and exits immediately (~275ms),
+  //    so we CANNOT use external bridges — they die before the browser loads.
+  //    Instead, we install a WebExtension that handles proxy routing + auth inside the browser.
+  if (payload.proxy && payload.proxy.server) {
+    const { server, username, password } = payload.proxy;
+    const hasAuth = !!(username && password);
+    
+    // Parse proxy URL
+    let proxyServer = server;
+    if (!proxyServer.includes('://')) proxyServer = 'http://' + proxyServer;
+    
+    let proxyUrl;
+    try {
+      proxyUrl = new URL(proxyServer);
+    } catch (e) {
+      warn('[CAMOUFOX] Некорректный формат прокси:', server);
+      proxyUrl = null;
+    }
+
+    if (proxyUrl) {
+      const protocol = proxyUrl.protocol.replace(':', '').toLowerCase(); // http, https, socks4, socks5
+      const pHost = proxyUrl.hostname;
+      const pPort = parseInt(proxyUrl.port) || (protocol.includes('socks') ? 1080 : 8080);
+      const isSocks = protocol.includes('socks');
+
+      log('[CAMOUFOX] Прокси:', `${protocol}://${pHost}:${pPort}`, hasAuth ? '(с auth)' : '(без auth)');
+      logToFile(`Proxy: ${protocol}://${pHost}:${pPort} auth=${hasAuth}`);
+
+      if (hasAuth) {
+        // Auth required → Firefox extension handles proxy + credentials
+        // Works for ALL types: http, https, socks4, socks5
+        setupProxyExtension(profileDir, {
+          type: protocol,
+          host: pHost,
+          port: pPort,
+          username: username,
+          password: password,
+        });
+        // Set proxy.type=0 in user.js — extension overrides per-request via proxy.onRequest
+        clearProxyPrefs(profileDir);
+        log('[CAMOUFOX] Прокси через расширение (с авторизацией)');
+      } else if (isSocks) {
+        // SOCKS without auth — native Firefox prefs
+        removeProxyExtension(profileDir);
+        writeProxyPrefs(profileDir, pHost, pPort, 'socks');
+      } else {
+        // HTTP/HTTPS without auth — native Firefox prefs
+        removeProxyExtension(profileDir);
+        writeProxyPrefs(profileDir, pHost, pPort, 'http');
+      }
+    }
+  } else {
+    // No proxy — clean up extension and prefs
+    removeProxyExtension(profileDir);
+    clearProxyPrefs(profileDir);
+  }
+
+  // 5. Write base prefs (timezone, locale, WebRTC, etc.)
+  writeBasePrefs(profileDir, payload);
+
+  // 6. Build launch args
+  const args = ['-profile', profileDir, '-no-remote'];
+
+  // Add URL if provided
+  const url = payload.url || 'https://www.google.com';
+  args.push('-new-tab', url);
+
+  log('[CAMOUFOX] Exe:', exe);
+  log('[CAMOUFOX] Args:', args.join(' '));
+  log('[CAMOUFOX] CAMOU_CONFIG chunks:', Object.keys(camoufoxEnv).length);
+
+  // 7. Spawn Camoufox process
+  const child = spawn(exe, args, {
+    env: { ...process.env, ...camoufoxEnv },
+    stdio: isDev ? ['ignore', 'pipe', 'pipe'] : 'ignore',
+    detached: false,
+    windowsHide: false,
+  });
+
+  if (isDev && child.stdout) {
+    child.stdout.on('data', (d) => log('[CAMOUFOX-OUT]', d.toString().trim()));
+  }
+  if (isDev && child.stderr) {
+    child.stderr.on('data', (d) => log('[CAMOUFOX-ERR]', d.toString().trim()));
+  }
+
+  log('[CAMOUFOX] PID:', child.pid);
+  logToFile(`Camoufox launched, PID: ${child.pid}`);
+
+  // 8. Wait for process exit
+  await new Promise((resolve) => {
+    child.on('exit', (code) => {
+      log('[CAMOUFOX] Процесс завершён, код:', code);
+      logToFile(`Camoufox exited, code: ${code}`);
+      resolve();
+    });
+    child.on('error', (err) => {
+      error('[CAMOUFOX] Ошибка процесса:', err.message);
+      logToFile(`Camoufox error: ${err.message}`);
+      resolve();
+    });
+  });
+
+  // 9. Done — no bridge cleanup needed (extension handles proxy inside browser)
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// MAIN ENTRY POINT
+// ═══════════════════════════════════════════════════════════════════════
 async function main() {
   try {
     const argv = process.argv.slice(2);
     if (argv.includes('--help') || argv.includes('-h')) {
-      log('AEZAKMI Launcher v2.1.0');
-      log('Usage: node launch_playwright.cjs <base64-payload>');
-      log('       node launch_playwright.cjs --dry-run');
+      log('AEZAKMI Launcher v4.0.0 (Camoufox antidetect)');
+      log('Usage: node launch_playwright.cjs --payload=<base64-json>');
       process.exit(0);
     }
     if (argv.includes('--dry-run')) {
@@ -692,225 +783,16 @@ async function main() {
     const payload = JSON.parse(json);
 
     log('[LAUNCHER] ═══════════════════════════════════════');
-    log('[LAUNCHER] 🔍 PAYLOAD DUMP:', JSON.stringify({
-      profileDir: payload.profileDir,
-      browserType: payload.browserType,
-      hasProxy: !!payload.proxy,
-      proxyServer: payload.proxy?.server,
-      proxyUsername: payload.proxy?.username ? '***' : 'нет',
-      proxyPassword: payload.proxy?.password ? '***' : 'нет',
-      proxyFULL: payload.proxy, // ПОЛНЫЙ объект прокси
-      autoDetectLocale: payload.autoDetectLocale,
-      locale: payload.locale,
-      timezoneId: payload.timezoneId
-    }, null, 2));
-    log('[LAUNCHER] ═══════════════════════════════════════');
     log('[LAUNCHER] Профиль:', payload.profileDir);
-    log('[LAUNCHER] Движок:', payload.browserType || 'chromium');
+    log('[LAUNCHER] Движок: Camoufox (antidetect Firefox)');
+    log('[LAUNCHER] Прокси:', payload.proxy?.server || 'нет');
     log('[LAUNCHER] Язык:', payload.locale || 'не указан');
-    log('[LAUNCHER] Часовой пояс:', payload.timezoneId || 'не указан');
-    log('[LAUNCHER] Мобильная эмуляция:', payload.mobileEmulation?.enabled ? `✅ ${payload.mobileEmulation.deviceName}` : '❌');
     log('[LAUNCHER] ═══════════════════════════════════════');
 
-    // Resolve browser engine
-    const browserInfo = getBrowserEngine(payload.browserType);
-    log(`[LAUNCHER] Браузер: ${browserInfo.name}`);
-
-    // Ensure browser is installed
-    await ensureBrowserInstalled(browserInfo);
-
-    // ─── RESOLVE PROFILE DIRECTORY ───
-    // КРИТИЧЕСКИ ВАЖНО: profileDir ДОЛЖЕН быть абсолютным путём в ЗАПИСЫВАЕМОЙ папке!
-    // C:\Program Files\ — НЕ записываема без админ прав!
-    // Поэтому всегда резолвим в %LOCALAPPDATA%\AEZAKMI Pro\profiles\<name>
-    let profileDir = payload.profileDir || `aezakmi-profile-${Date.now()}`;
-    
-    if (!path.isAbsolute(profileDir)) {
-      // Резолвим в AppData (записываемая директория)
-      const profilesBase = process.env.AEZAKMI_PROFILES_DIR 
-        || (process.env.LOCALAPPDATA 
-          ? path.join(process.env.LOCALAPPDATA, 'AEZAKMI Pro', 'profiles')
-          : path.join(appDir, 'profiles'));
-      
-      profileDir = path.join(profilesBase, profileDir);
-    }
-    
-    // Создаём директорию если не существует
-    try { fs.mkdirSync(profileDir, { recursive: true }); } catch (e) {}
-    
-    log('[LAUNCHER] 📁 Профиль:', profileDir);
-    logToFile(`Profile dir: ${profileDir}`);
-
-    // Домашняя страница: Google по умолчанию (максимальная стабильность через прокси)
-    let url = payload.url || 'https://www.google.com';
-
-    // ─── Proxy setup ───
-    // УПРОЩЁННЫЙ подход: для Chromium передаём прокси НАПРЯМУЮ через --proxy-server
-    // Авторизация через page-level CDP: context.setHTTPCredentials / page.authenticate
-    // НЕ используем socks, proxy-chain — их нет в bundled modules!
-    let proxyConfig = undefined;
-    let proxyCredentials = null; // { username, password } для page.authenticate
-
-    if (payload.proxy && payload.proxy.server) {
-      const { server, username, password } = payload.proxy;
-      const hasAuth = !!(username && password);
-      const isSocks = server.toLowerCase().includes('socks');
-
-      log('[LAUNCHER] ═══ ПРОКСИ КОНФИГУРАЦИЯ ═══');
-      log('[LAUNCHER] Сервер:', server);
-      log('[LAUNCHER] Авторизация:', hasAuth ? 'ДА' : 'НЕТ');
-      log('[LAUNCHER] Тип:', isSocks ? 'SOCKS' : 'HTTP/HTTPS');
-      logToFile(`Proxy: ${server}, auth: ${hasAuth}, socks: ${isSocks}`);
-
-      // Для Chromium: прокси передаём через --proxy-server (поддерживает socks5 и http)
-      // Авторизацию — через CDP (page.authenticate)
-      let proxyServer = server;
-      
-      // Нормализуем URL прокси
-      if (!proxyServer.includes('://')) {
-        proxyServer = (isSocks ? 'socks5' : 'http') + '://' + proxyServer;
-      }
-      
-      proxyConfig = { server: proxyServer };
-      
-      if (hasAuth) {
-        proxyCredentials = { username, password };
-        log('[LAUNCHER] 🔑 Авторизация будет через CDP (page-level)');
-      }
-
-      log('[LAUNCHER] ═══ ФИНАЛЬНАЯ КОНФИГУРАЦИЯ ═══');
-      log('[LAUNCHER] Сервер:', proxyConfig.server);
-      log('[LAUNCHER] ═══════════════════════════════');
-    } else {
-      log('[LAUNCHER] 🌐 Прокси не используется');
-    }
-
-    // ─── Locale / timezone из профиля ───
-    let detectedLocale = payload.locale || 'ru-RU';
-    let detectedTimezone = payload.timezoneId || 'Europe/Moscow';
-
-    // ─── Build launch options ───
-    const isMobile = payload.mobileEmulation?.enabled || false;
-
-    log('[LAUNCHER] Язык:', detectedLocale);
-    log('[LAUNCHER] Часовой пояс:', detectedTimezone);
-
-    const contextOptions = {
-      headless: false,
-      locale: detectedLocale,
-      timezoneId: detectedTimezone,
-    };
-
-    // Chromium-specific args
-    if (browserInfo.isChromium) {
-      contextOptions.args = getChromiumStealthArgs();
-      contextOptions.ignoreDefaultArgs = ['--enable-automation'];
-    }
-
-    // Прокси через Playwright native proxy option
-    // Это единственный правильный способ: Playwright сам обработает auth для HTTP и SOCKS
-    // --proxy-server НЕ поддерживает SOCKS auth, CDP Fetch.authRequired НЕ работает для SOCKS
-    if (proxyConfig) {
-      contextOptions.proxy = {
-        server: proxyConfig.server,
-      };
-      if (proxyCredentials) {
-        contextOptions.proxy.username = proxyCredentials.username;
-        contextOptions.proxy.password = proxyCredentials.password;
-      }
-      log('[LAUNCHER] 🌐 Прокси через Playwright native:', proxyConfig.server, proxyCredentials ? '(с авторизацией)' : '(без авторизации)');
-      logToFile(`Proxy: ${proxyConfig.server}, auth: ${!!proxyCredentials}`);
-    }
-
-    // Mobile emulation via Playwright context
-    if (isMobile && payload.mobileEmulation) {
-      const m = payload.mobileEmulation;
-      contextOptions.viewport = { width: m.width || 390, height: m.height || 844 };
-      contextOptions.deviceScaleFactor = m.deviceScaleFactor || 3;
-      contextOptions.isMobile = true;
-      contextOptions.hasTouch = true;
-      if (m.userAgent) contextOptions.userAgent = m.userAgent;
-      log('[LAUNCHER] 📱 Мобильный режим:', m.deviceName, `${m.width}x${m.height} @${m.deviceScaleFactor}x`);
-    } else {
-      contextOptions.viewport = null; // Use browser window size
-    }
-
-    // ─── Launch browser ───
-    log(`[LAUNCHER] 🚀 Запуск ${browserInfo.name}...`);
-    logToFile(`Launching browser with options: ${JSON.stringify({proxy: proxyConfig?.server, locale: detectedLocale, timezone: detectedTimezone})}`);
-    const context = await browserInfo.engine.launchPersistentContext(profileDir, contextOptions);
-    log(`[LAUNCHER] ✅ ${browserInfo.name} запущен`);
-    logToFile('Browser launched OK');
-
-    // ─── Inject antidetect scripts ───
-    const antidetectScript = isMobile
-      ? buildMobileAntidetectScript(payload)
-      : buildDesktopAntidetectScript(payload);
-
-    await context.addInitScript({ content: antidetectScript });
-
-    // Also inject into existing pages
-    const page = context.pages().length ? context.pages()[0] : await context.newPage();
-    await page.addInitScript({ content: antidetectScript });
-
-    // ─── Inject cookies (if provided) ───
-    if (payload.cookies && Array.isArray(payload.cookies) && payload.cookies.length > 0) {
-      log(`[LAUNCHER] 🍪 Загрузка ${payload.cookies.length} cookies...`);
-      try {
-        const formattedCookies = payload.cookies.map(c => ({
-          name: c.name,
-          value: c.value,
-          domain: c.domain,
-          path: c.path || '/',
-          expires: c.expires || (Date.now() / 1000 + 86400 * 365),
-          httpOnly: c.httpOnly || false,
-          secure: c.secure || false,
-          sameSite: c.sameSite || 'Lax',
-        }));
-        await context.addCookies(formattedCookies);
-        log(`[LAUNCHER] ✅ ${formattedCookies.length} cookies загружены`);
-      } catch (cookieErr) {
-        warn('[LAUNCHER] ⚠️ Ошибка загрузки cookies:', cookieErr.message);
-      }
-    }
-
-    // Navigate
-    page.on('requestfailed', (req) => {
-      try { warn('[requestfailed]', req.url(), req.failure()?.errorText); } catch (e) { }
-    });
-
-    log('[LAUNCHER] 🌐 Переход на:', url);
-
-    try {
-      await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 });
-      log('[LAUNCHER] ✅ Страница загружена:', url);
-    } catch (err) {
-      warn('[LAUNCHER] ⚠️ page.goto error:', err?.message || err);
-
-      // Fallback: пробуем Google если исходная страница не загрузилась
-      if (url !== 'https://www.google.com') {
-        try {
-          log('[LAUNCHER] Fallback: переход на Google');
-          await page.goto('https://www.google.com', { waitUntil: 'domcontentloaded', timeout: 15000 });
-          log('[LAUNCHER] ✅ Fallback загружен');
-        } catch (fallbackErr) {
-          warn('[LAUNCHER] ⚠️ Fallback тоже не загрузился, браузер готов к ручной навигации');
-        }
-      }
-    }
-
-    try {
-      const ip = await page.evaluate(() => fetch('https://api.ipify.org').then(r => r.text()).catch(() => null));
-      if (ip) log('[LAUNCHER] IP:', ip);
-    } catch (e) { }
-
-    // Wait for browser close
-    log('[LAUNCHER] Ожидание закрытия браузера...');
-    try { await context.waitForEvent('close', { timeout: 0 }); } catch (err) { }
-    try { await context.close(); } catch (err) { }
+    await launchCamoufox(payload);
 
   } catch (err) {
-    error('[LAUNCHER] ❌ Ошибка:', err.message);
+    error('[LAUNCHER] Ошибка:', err.message);
     logToFile(`ERROR: ${err.message}\n${err.stack}`);
     process.exit(1);
   }

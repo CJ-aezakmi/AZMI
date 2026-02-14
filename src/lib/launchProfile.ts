@@ -12,24 +12,15 @@ function generateUserAgent(profile: Profile): string {
   }
 
   const os = profile.os || 'windows';
-  const browserEngine = profile.browserEngine || 'chromium';
 
-  const userAgents = {
-    windows: {
-      chromium: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-    },
-    macos: {
-      chromium: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-    },
-    linux: {
-      chromium: 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-    },
+  const userAgents: Record<string, string> = {
+    windows: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:135.0) Gecko/20100101 Firefox/135.0',
+    macos: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:135.0) Gecko/20100101 Firefox/135.0',
+    linux: 'Mozilla/5.0 (X11; Linux x86_64; rv:135.0) Gecko/20100101 Firefox/135.0',
   };
 
-  const osKey = os.toLowerCase() as keyof typeof userAgents;
-  const engineKey = browserEngine as keyof typeof userAgents.windows;
-
-  return userAgents[osKey]?.[engineKey] || userAgents.windows.chromium;
+  const osKey = os.toLowerCase();
+  return userAgents[osKey] || userAgents.windows;
 }
 
 /**
@@ -112,7 +103,7 @@ export async function launchProfile(profile: Profile) {
     // Формируем полную конфигурацию для лаунчера
     const launchConfig: LaunchConfig = {
       profileDir,
-      browserType: profile.browserEngine || 'chromium',
+      browserType: profile.browserEngine || 'camoufox',
       userAgent,
       screen,
       proxy: proxyData,

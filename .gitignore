@@ -1,25 +1,29 @@
+# Dependencies
 node_modules/
+
+# Build outputs
 dist/
 build/
 out/
 release/
+/release-builds/
+
+# Tauri build artifacts
+src-tauri/target/
+src-tauri/node/
+src-tauri/scripts/
+src-tauri/node-extract-tmp/
+src-tauri/playwright/
+src-tauri/aezakmi-profile-*/
+
+# Installers
 *.AppImage
 *.dmg
 *.exe
 *.zip
 *.tar.gz
-/release-builds/
 
-# Bundle directory (large files, generated before build)
-bundle/
-src-tauri/playwright-cache/
-src-tauri/playwright/modules/.bin/
-src-tauri/playwright/modules/.package-lock.json
-
-# Rust
-target/
-
-# User data (не должно попадать в git)
+# User data (never commit)
 aezakmi_used_keys.txt
 aezakmi-profile-*/
 *.log
@@ -34,13 +38,8 @@ aezakmi-profile-*/
 .DS_Store
 Thumbs.db
 
-# Временные файлы
+# Temp
 *.tmp
 *.temp
-package-lock.json
-puppeteer-launcher.js
-image*.png
-
-# Debug
 *.pdb
 *.ilk
