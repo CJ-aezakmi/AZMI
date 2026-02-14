@@ -15,7 +15,7 @@ import { toast } from 'sonner';
 import { Profile, Proxy, BrowserEngine, CookieEntry } from '@/types';
 import { launchProfile } from '@/lib/launchProfile';
 import { safeConfirm, safePrompt } from '@/lib/safeDialog';
-import { checkForUpdates, checkPlaywrightUpdate, updatePlaywright, downloadUpdate, installUpdate, UpdateInfo, shouldAutoCheck, setLastUpdateCheck, isAutoUpdateEnabled, getCurrentVersion } from '@/lib/updater';
+import { checkForUpdates, downloadUpdate, installUpdate, UpdateInfo, shouldAutoCheck, setLastUpdateCheck, isAutoUpdateEnabled, getCurrentVersion } from '@/lib/updater';
 import { getSXOrgApiKey, SXOrgClient } from '@/lib/sxorg-api';
 import sxorgLogo from '@/assets/sxorg-logo.svg';
 
@@ -37,9 +37,6 @@ const Dashboard = () => {
   // Cookie Robot
   const [cookieBotProfile, setCookieBotProfile] = useState<Profile | null>(null);
   const [isCookieBotModalOpen, setIsCookieBotModalOpen] = useState(false);
-  // Playwright update banner
-  const [showPlaywrightBanner, setShowPlaywrightBanner] = useState(false);
-  const [isUpdatingPlaywright, setIsUpdatingPlaywright] = useState(false);
   // Default browser engine setting
   const [defaultEngine, setDefaultEngine] = useState<BrowserEngine>(
     () => (localStorage.getItem('aezakmi_default_engine') as BrowserEngine) || 'camoufox'
@@ -173,13 +170,23 @@ const Dashboard = () => {
   // Создание/редактирование профиля
   const handleSaveProfile = (profileData: Omit<Profile, 'id' | 'createdAt' | 'status'>) => {
     if (editingProfile) {
-      // Редактирование
-      const updatedProfiles = profiles.map(p =>
-        p.id === editingProfile.id
-          ? { ...p, ...profileData, updatedAt: new Date().toISOString() }
-          : p
-      );
-      saveProfiles(updatedProfiles);
+      // Редактирование — используем функциональный updater чтобы избежать stale state
+      const editId = editingProfile.id;
+      setProfiles(prev => {
+        const updatedProfiles = prev.map(p => {
+          if (p.id !== editId) return p;
+          // Явная пересборка профиля: все поля из profileData заменяют старые
+          const updated: Profile = {
+            ...p,
+            ...profileData,
+            proxy: profileData.proxy ?? undefined, // явно заменяем прокси (даже если undefined)
+            updatedAt: new Date().toISOString(),
+          };
+          return updated;
+        });
+        localStorage.setItem('aezakmi_profiles', JSON.stringify(updatedProfiles));
+        return updatedProfiles;
+      });
       toast.success(`Профиль "${profileData.name}" обновлен!`);
     } else {
       // Создание
@@ -189,7 +196,11 @@ const Dashboard = () => {
         createdAt: new Date().toISOString(),
         status: 'inactive'
       };
-      saveProfiles([...profiles, newProfile]);
+      setProfiles(prev => {
+        const updated = [...prev, newProfile];
+        localStorage.setItem('aezakmi_profiles', JSON.stringify(updated));
+        return updated;
+      });
       toast.success(`Профиль "${profileData.name}" создан!`);
     }
     setIsProfileModalOpen(false);
@@ -245,18 +256,6 @@ const Dashboard = () => {
       toast.error(`Не удалось запустить профиль`, {
         description: err?.message || String(err)
       });
-    }
-  };
-
-  // Диагностика Playwright
-  const handleCheckPlaywright = async () => {
-    try {
-      const { invoke } = await import('@tauri-apps/api/core');
-      const result = await invoke('check_and_install_playwright') as string;
-
-      alert('✅ Статус компонентов:\n\n' + result);
-    } catch (err: any) {
-      alert('❌ Ошибка проверки:\n\n' + err);
     }
   };
 
@@ -524,8 +523,6 @@ const Dashboard = () => {
     }
   };
 
-  // Проверка обновлений Playwright убрана (теперь в AppStatusBar)
-
   // Persist default engine
   useEffect(() => {
     localStorage.setItem('aezakmi_default_engine', defaultEngine);
@@ -698,17 +695,10 @@ const Dashboard = () => {
               setEditingProfile(null);
               setIsProfileModalOpen(true);
             }}
-            className="w-full mb-2"
+            className="w-full"
           >
             <Plus className="w-4 h-4 mr-2" />
             Создать профиль
-          </Button>
-          <Button
-            onClick={handleCheckPlaywright}
-            variant="outline"
-            className="w-full text-xs"
-          >
-            🔍 Проверка компонентов
           </Button>
         </div>
       </aside>
@@ -1306,28 +1296,6 @@ const Dashboard = () => {
                       checked={localStorage.getItem('aezakmi_screenshot_protection') === 'true'}
                       onCheckedChange={(v) => localStorage.setItem('aezakmi_screenshot_protection', String(v))}
                     />
-                  </div>
-                </CardContent>
-              </Card>
-
-              <Card className="bg-white/95 backdrop-blur-sm">
-                <CardHeader>
-                  <CardTitle>Компоненты</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-3">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="font-medium">Playwright</p>
-                        <p className="text-sm text-gray-600">Компоненты автоматизации браузера</p>
-                      </div>
-                      <div className="flex gap-2">
-                        {isUpdatingPlaywright && <RefreshCw className="w-4 h-4 animate-spin text-blue-500" />}
-                        <Button variant="outline" size="sm" onClick={handleCheckPlaywright}>
-                          Проверить
-                        </Button>
-                      </div>
-                    </div>
                   </div>
                 </CardContent>
               </Card>

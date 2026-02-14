@@ -73,7 +73,7 @@ const ProfileModal = ({ open, onOpenChange, onSave, profile, proxies, folders = 
         proxyType: profile.proxy?.type || 'http',
         proxyHost: profile.proxy?.host || '',
         proxyPort: String(profile.proxy?.port || ''),
-        proxyUsername: profile.proxy?.username || '',
+        proxyUsername: profile.proxy?.username || profile.proxy?.login || '',
         proxyPassword: profile.proxy?.password || '',
         canvasNoise: profile.antidetect.canvasNoise,
         webglNoise: profile.antidetect.webglNoise,
