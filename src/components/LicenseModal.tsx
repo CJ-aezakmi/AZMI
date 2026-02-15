@@ -6,6 +6,7 @@ import { Label } from '@/components/ui/label';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { activateLicense } from '@/lib/license';
 import { KeyRound, AlertCircle, CheckCircle } from 'lucide-react';
+import { useTranslation } from '@/lib/i18n';
 
 interface LicenseModalProps {
   open: boolean;
@@ -13,6 +14,7 @@ interface LicenseModalProps {
 }
 
 const LicenseModal = ({ open, onLicenseActivated }: LicenseModalProps) => {
+  const { t } = useTranslation();
   const [licenseKey, setLicenseKey] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
@@ -20,7 +22,7 @@ const LicenseModal = ({ open, onLicenseActivated }: LicenseModalProps) => {
 
   const handleActivate = async () => {
     if (!licenseKey.trim()) {
-      setError('Введите лицензионный ключ');
+      setError(t('licenseModal.enterKey'));
       return;
     }
 
@@ -54,16 +56,16 @@ const LicenseModal = ({ open, onLicenseActivated }: LicenseModalProps) => {
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <KeyRound className="w-5 h-5" />
-            Активация лицензии
+            {t('licenseModal.title')}
           </DialogTitle>
           <DialogDescription>
-            Введите лицензионный ключ для активации программы
+            {t('licenseModal.description')}
           </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4 py-4">
           <div className="space-y-2">
-            <Label htmlFor="license-key">Лицензионный ключ</Label>
+            <Label htmlFor="license-key">{t('licenseModal.keyLabel')}</Label>
             <Input
               id="license-key"
               placeholder="XXXX-XXXX-XXXX-XXXX"
@@ -89,11 +91,11 @@ const LicenseModal = ({ open, onLicenseActivated }: LicenseModalProps) => {
           )}
 
           <div className="bg-gray-50 p-3 rounded-md text-sm text-gray-600">
-            <p className="font-medium mb-1">Информация:</p>
+            <p className="font-medium mb-1">{t('licenseModal.info')}</p>
             <ul className="list-disc list-inside space-y-1">
-              <li>Лицензия действует 3 дня с момента активации</li>
-              <li>После истечения потребуется новый ключ</li>
-              <li>Один ключ можно активировать только один раз</li>
+              <li>{t('licenseModal.info1')}</li>
+              <li>{t('licenseModal.info2')}</li>
+              <li>{t('licenseModal.info3')}</li>
             </ul>
           </div>
         </div>
@@ -104,7 +106,7 @@ const LicenseModal = ({ open, onLicenseActivated }: LicenseModalProps) => {
             disabled={isLoading || !licenseKey.trim()}
             className="w-full"
           >
-            {isLoading ? 'Активация...' : 'Активировать'}
+            {isLoading ? t('licenseModal.activating') : t('licenseModal.activate')}
           </Button>
         </div>
       </DialogContent>

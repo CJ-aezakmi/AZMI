@@ -22,6 +22,7 @@ import {
 } from '@/lib/cookie-bot';
 import { toast } from 'sonner';
 import { Profile } from '@/types';
+import { useTranslation } from '@/lib/i18n';
 
 interface CookieBotModalProps {
   open: boolean;
@@ -30,6 +31,7 @@ interface CookieBotModalProps {
 }
 
 export default function CookieBotModal({ open, onOpenChange, profile }: CookieBotModalProps) {
+  const { t } = useTranslation();
   const [config, setConfig] = useState<CookieBotConfig>(getDefaultCookieBotConfig());
   const [isRunning, setIsRunning] = useState(false);
   const [progress, setProgress] = useState(0);
@@ -58,7 +60,7 @@ export default function CookieBotModal({ open, onOpenChange, profile }: CookieBo
       if (idx >= sites.length) {
         setIsRunning(false);
         setProgress(100);
-        toast.success(`Cookie Robot завершил работу! Посещено ${sites.length} сайтов`);
+        toast.success(t('cookieBot.completed', { count: String(sites.length) }));
         clearInterval(interval);
         return;
       }
@@ -91,7 +93,7 @@ export default function CookieBotModal({ open, onOpenChange, profile }: CookieBo
       setCurrentSite('');
       
       await startCookieBot(profile.id, config);
-      toast.info(`Cookie Robot запущен для "${profile.name}"`);
+      toast.info(t('cookieBot.started', { name: profile.name }));
     } catch (error: any) {
       setIsRunning(false);
       toast.error(`Ошибка: ${error.message}`);
@@ -104,7 +106,7 @@ export default function CookieBotModal({ open, onOpenChange, profile }: CookieBo
     try {
       await stopCookieBot(profile.id);
       setIsRunning(false);
-      toast.info('Cookie Robot остановлен');
+      toast.info(t('cookieBot.stopped'));
     } catch (error: any) {
       toast.error(`Ошибка: ${error.message}`);
     }
@@ -118,10 +120,10 @@ export default function CookieBotModal({ open, onOpenChange, profile }: CookieBo
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Cookie className="w-5 h-5 text-amber-500" />
-            Cookie Robot
+            {t('cookieBot.title')}
           </DialogTitle>
           <DialogDescription>
-            Нагулка cookies для профиля «{profile.name}»
+            {t('cookieBot.description', { name: profile.name })}
           </DialogDescription>
         </DialogHeader>
 
@@ -130,7 +132,7 @@ export default function CookieBotModal({ open, onOpenChange, profile }: CookieBo
           <div className="space-y-4 py-4">
             <div className="space-y-2">
               <div className="flex items-center justify-between text-sm">
-                <span className="text-gray-600">Посещено: {visitedCount} из {siteList.length}</span>
+                <span className="text-gray-600">{t('cookieBot.visited', { current: String(visitedCount), total: String(siteList.length) })}</span>
                 <span className="font-mono text-blue-600">{progress}%</span>
               </div>
               <Progress value={progress} />
@@ -145,7 +147,7 @@ export default function CookieBotModal({ open, onOpenChange, profile }: CookieBo
 
             <div className="flex items-center gap-2 text-xs text-gray-500">
               <Clock className="w-3 h-3" />
-              <span>{config.timePerSite}с на каждый сайт</span>
+              <span>{t('cookieBot.timePerSite', { seconds: String(config.timePerSite) })}</span>
             </div>
           </div>
         ) : (
@@ -153,7 +155,7 @@ export default function CookieBotModal({ open, onOpenChange, profile }: CookieBo
           <div className="space-y-4 py-4">
             {/* Категории */}
             <div>
-              <p className="text-sm font-medium mb-2">Категории сайтов:</p>
+              <p className="text-sm font-medium mb-2">{t('cookieBot.categories')}</p>
               <div className="flex flex-wrap gap-2">
                 {categories.map(cat => (
                   <Badge
@@ -171,8 +173,8 @@ export default function CookieBotModal({ open, onOpenChange, profile }: CookieBo
             {/* Время на сайт */}
             <div>
               <div className="flex items-center justify-between mb-2">
-                <p className="text-sm font-medium">Время на сайт:</p>
-                <span className="text-sm text-gray-500">{config.timePerSite} сек.</span>
+                <p className="text-sm font-medium">{t('cookieBot.timeLabel')}</p>
+                <span className="text-sm text-gray-500">{t('cookieBot.timeSec', { seconds: String(config.timePerSite) })}</span>
               </div>
               <Slider
                 value={[config.timePerSite]}
@@ -186,7 +188,7 @@ export default function CookieBotModal({ open, onOpenChange, profile }: CookieBo
             {/* Сайтов из категории */}
             <div>
               <div className="flex items-center justify-between mb-2">
-                <p className="text-sm font-medium">Сайтов из каждой категории:</p>
+                <p className="text-sm font-medium">{t('cookieBot.sitesPerCategory')}</p>
                 <span className="text-sm text-gray-500">{config.sitesPerCategory}</span>
               </div>
               <Slider
@@ -205,21 +207,21 @@ export default function CookieBotModal({ open, onOpenChange, profile }: CookieBo
                   checked={config.scrollPages}
                   onCheckedChange={(v) => setConfig(prev => ({ ...prev, scrollPages: !!v }))}
                 />
-                Прокручивать страницы
+                {t('cookieBot.scrollPages')}
               </label>
               <label className="flex items-center gap-2 text-sm">
                 <Checkbox
                   checked={config.clickLinks}
                   onCheckedChange={(v) => setConfig(prev => ({ ...prev, clickLinks: !!v }))}
                 />
-                Кликать по ссылкам на страницах
+                {t('cookieBot.clickLinks')}
               </label>
               <label className="flex items-center gap-2 text-sm">
                 <Checkbox
                   checked={config.randomOrder}
                   onCheckedChange={(v) => setConfig(prev => ({ ...prev, randomOrder: !!v }))}
                 />
-                Случайный порядок посещения
+                {t('cookieBot.randomOrder')}
               </label>
             </div>
 
@@ -231,12 +233,12 @@ export default function CookieBotModal({ open, onOpenChange, profile }: CookieBo
               onClick={() => setShowAdvanced(!showAdvanced)}
             >
               <Settings2 className="w-4 h-4 mr-1" />
-              {showAdvanced ? 'Скрыть' : 'Свои сайты'}
+              {showAdvanced ? t('cookieBot.hideAdvanced') : t('cookieBot.customSites')}
             </Button>
 
             {showAdvanced && (
               <div>
-                <p className="text-xs text-gray-500 mb-1">Дополнительные URL (по одному на строку):</p>
+                <p className="text-xs text-gray-500 mb-1">{t('cookieBot.customUrlsHint')}</p>
                 <Textarea
                   placeholder="https://example.com&#10;https://another-site.com"
                   rows={3}
@@ -252,8 +254,8 @@ export default function CookieBotModal({ open, onOpenChange, profile }: CookieBo
             {/* Итого */}
             <div className="bg-amber-50 border border-amber-200 p-3 rounded-lg text-sm">
               <div className="flex items-center justify-between">
-                <span>Всего сайтов: <strong>{siteList.length}</strong></span>
-                <span>Время: <strong>{eta}</strong></span>
+                <span>{t('cookieBot.totalSites')} <strong>{siteList.length}</strong></span>
+                <span>{t('cookieBot.time')} <strong>{eta}</strong></span>
               </div>
             </div>
           </div>
@@ -263,12 +265,12 @@ export default function CookieBotModal({ open, onOpenChange, profile }: CookieBo
           {isRunning ? (
             <Button variant="destructive" onClick={handleStop}>
               <Square className="w-4 h-4 mr-2" />
-              Остановить
+              {t('cookieBot.stop')}
             </Button>
           ) : (
             <>
               <Button variant="outline" onClick={() => onOpenChange(false)}>
-                Отмена
+                {t('common.cancel')}
               </Button>
               <Button
                 onClick={handleStart}
@@ -276,7 +278,7 @@ export default function CookieBotModal({ open, onOpenChange, profile }: CookieBo
                 className="bg-amber-500 hover:bg-amber-600"
               >
                 <Play className="w-4 h-4 mr-2" />
-                Запустить ({siteList.length} сайтов)
+                {t('cookieBot.start', { count: String(siteList.length) })}
               </Button>
             </>
           )}

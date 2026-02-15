@@ -9,6 +9,7 @@ import {
   type SXOrgProxyPort
 } from '@/lib/sxorg-api';
 import { Search, Check, Loader2, HelpCircle } from 'lucide-react';
+import { useTranslation } from '@/lib/i18n';
 
 type DeviceType = 'mobile' | 'residential' | 'datacenter';
 type TabType = 'country' | 'region' | 'city' | 'advanced';
@@ -21,6 +22,7 @@ export function SXOrgCreateProxy({
   client: SXOrgClient;
   onProxiesCreated: (proxies: SXOrgProxyPort[]) => void;
 }) {
+  const { t } = useTranslation();
   const [name, setName] = useState('');
   const [deviceTypes, setDeviceTypes] = useState<DeviceType[]>(['mobile', 'residential', 'datacenter']);
 
@@ -241,18 +243,18 @@ export function SXOrgCreateProxy({
       <div className="flex gap-4 pb-4 border-b">
         {/* Name Input */}
         <div className="flex-1">
-          <label className="block text-sm font-medium mb-2">Название</label>
+          <label className="block text-sm font-medium mb-2">{t('sxorg.nameLabel')}</label>
           <Input
             value={name}
             onChange={(e) => setName(e.target.value)}
-            placeholder="Введите название"
+            placeholder={t('sxorg.namePlaceholder')}
             className="w-full"
           />
         </div>
 
         {/* Device Type Selection */}
         <div className="flex-1">
-          <label className="block text-sm font-medium mb-2">Тип устройства</label>
+          <label className="block text-sm font-medium mb-2">{t('sxorg.deviceType')}</label>
           <div className="flex gap-2">
             {/* Mobile */}
             <button
@@ -321,7 +323,7 @@ export function SXOrgCreateProxy({
             }`}
         >
           {selectedCountry && <Check className="w-4 h-4 text-green-600" />}
-          <span className="font-medium">Страна</span>
+          <span className="font-medium">{t('sxorg.country')}</span>
         </button>
 
         <button
@@ -333,7 +335,7 @@ export function SXOrgCreateProxy({
             } disabled:opacity-50 disabled:cursor-not-allowed`}
         >
           {selectedState && <Check className="w-4 h-4 text-green-600" />}
-          <span className="font-medium">Регион</span>
+          <span className="font-medium">{t('sxorg.region')}</span>
         </button>
 
         <button
@@ -345,7 +347,7 @@ export function SXOrgCreateProxy({
             } disabled:opacity-50 disabled:cursor-not-allowed`}
         >
           {selectedCity && <Check className="w-4 h-4 text-green-600" />}
-          <span className="font-medium">Город</span>
+          <span className="font-medium">{t('sxorg.city')}</span>
         </button>
 
         <button
@@ -356,7 +358,7 @@ export function SXOrgCreateProxy({
               : 'border-transparent text-gray-400'
             } disabled:opacity-50 disabled:cursor-not-allowed`}
         >
-          <span className="font-medium">Расширенные настройки</span>
+          <span className="font-medium">{t('sxorg.advancedSettings')}</span>
         </button>
       </div>
 
@@ -377,7 +379,7 @@ export function SXOrgCreateProxy({
                   <Input
                     value={countrySearch}
                     onChange={(e) => setCountrySearch(e.target.value)}
-                    placeholder="Поиск по стране"
+                    placeholder={t('sxorg.searchCountry')}
                     className="pl-10"
                   />
                 </div>
@@ -385,7 +387,7 @@ export function SXOrgCreateProxy({
                 {/* Smart List */}
                 {smartCountries.length > 0 && !countrySearch && (
                   <div>
-                    <h5 className="text-sm font-semibold mb-3">Смарт-список стран</h5>
+                    <h5 className="text-sm font-semibold mb-3">{t('sxorg.smartList')}</h5>
                     <div className="grid grid-cols-2 gap-2">
                       {smartCountries.map((country) => (
                         <button
@@ -397,7 +399,7 @@ export function SXOrgCreateProxy({
                           <span className={`fi fi-${country.code.toLowerCase()} text-2xl`}></span>
                           <span className="flex-1 font-medium">{country.name}</span>
                           <span className="px-2 py-1 bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 text-xs rounded">
-                            Много
+                            {t('sxorg.many')}
                           </span>
                         </button>
                       ))}
@@ -407,7 +409,7 @@ export function SXOrgCreateProxy({
 
                 {/* All Countries */}
                 <div>
-                  <h5 className="text-sm font-semibold mb-3">Все страны</h5>
+                  <h5 className="text-sm font-semibold mb-3">{t('sxorg.allCountries')}</h5>
                   <div className="grid grid-cols-3 gap-2 max-h-96 overflow-y-auto">
                     {filteredCountries.map((country) => (
                       <button
@@ -441,7 +443,7 @@ export function SXOrgCreateProxy({
                   <Input
                     value={stateSearch}
                     onChange={(e) => setStateSearch(e.target.value)}
-                    placeholder="Поиск по региону"
+                    placeholder={t('sxorg.searchRegion')}
                     className="pl-10"
                   />
                 </div>
@@ -463,8 +465,8 @@ export function SXOrgCreateProxy({
                   </div>
                 ) : (
                   <div className="text-center py-8 text-gray-500">
-                    <div className="mb-2 text-sm">Нет доступных регионов</div>
-                    <div className="text-xs">Для этой страны регионы не требуются</div>
+                    <div className="mb-2 text-sm">{t('sxorg.noRegions')}</div>
+                    <div className="text-xs">{t('sxorg.noRegionsHint')}</div>
                   </div>
                 )}
               </>
@@ -486,7 +488,7 @@ export function SXOrgCreateProxy({
                   <Input
                     value={citySearch}
                     onChange={(e) => setCitySearch(e.target.value)}
-                    placeholder="Поиск по городу"
+                    placeholder={t('sxorg.searchCity')}
                     className="pl-10"
                   />
                 </div>
@@ -507,8 +509,8 @@ export function SXOrgCreateProxy({
                   </div>
                 ) : (
                   <div className="text-center py-8 text-gray-500">
-                    <div className="mb-2 text-sm">Нет доступных городов</div>
-                    <div className="text-xs">Для этого региона города не требуются</div>
+                    <div className="mb-2 text-sm">{t('sxorg.noCities')}</div>
+                    <div className="text-xs">{t('sxorg.noCitiesHint')}</div>
                   </div>
                 )}
               </>
@@ -521,7 +523,7 @@ export function SXOrgCreateProxy({
           <div className="space-y-6">
             {/* Name Input */}
             <div className="space-y-2">
-              <label className="block text-sm font-medium">Название</label>
+              <label className="block text-sm font-medium">{t('sxorg.nameLabel')}</label>
               <Input
                 value={name}
                 onChange={(e) => setName(e.target.value)}
@@ -533,11 +535,11 @@ export function SXOrgCreateProxy({
             {/* Proxy Count */}
             <div className="space-y-2">
               <div className="flex items-center gap-2">
-                <label className="block text-sm font-medium">Количество</label>
+                <label className="block text-sm font-medium">{t('sxorg.quantity')}</label>
                 <div className="group relative">
                   <HelpCircle className="w-4 h-4 text-gray-400 cursor-help" />
                   <div className="invisible group-hover:visible absolute left-0 top-6 w-48 p-2 bg-gray-900 text-white text-xs rounded shadow-lg z-10">
-                    Количество создаваемых прокси
+                    {t('sxorg.quantityTooltip')}
                   </div>
                 </div>
               </div>
@@ -552,7 +554,7 @@ export function SXOrgCreateProxy({
 
             {/* Behavior Type */}
             <div className="space-y-3">
-              <label className="block text-sm font-medium">Поведение, когда прокси умирает</label>
+              <label className="block text-sm font-medium">{t('sxorg.behaviorLabel')}</label>
 
               <label className="flex items-start gap-3 p-3 border rounded-lg cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors">
                 <input
@@ -563,9 +565,9 @@ export function SXOrgCreateProxy({
                   className="mt-1"
                 />
                 <div className="flex-1">
-                  <div className="font-medium">Сохранить соединение (ВЫСОКОЕ ДОВЕРИЕ) *Рекомендуется</div>
+                  <div className="font-medium">{t('sxorg.behaviorKeep')}</div>
                   <div className="text-sm text-gray-600 dark:text-gray-400 mt-1">
-                    Мы автоматически встроили проверку на тот или иной подсети есть тор-же ASN. Для конечного сайте будет выглядеть что вас сменился IP вы остались в тоге же провайдера и это не вызовет подозрений
+                    {t('sxorg.behaviorKeepDesc')}
                   </div>
                 </div>
               </label>
@@ -579,9 +581,9 @@ export function SXOrgCreateProxy({
                   className="mt-1"
                 />
                 <div className="flex-1">
-                  <div className="font-medium">Разрывать соединение</div>
+                  <div className="font-medium">{t('sxorg.behaviorBreak')}</div>
                   <div className="text-sm text-gray-600 dark:text-gray-400 mt-1">
-                    Если IP-адрес откликнулся, соединение будет потеряно до тех пор, пока IP-адрес не восстановится
+                    {t('sxorg.behaviorBreakDesc')}
                   </div>
                 </div>
               </label>
@@ -595,9 +597,9 @@ export function SXOrgCreateProxy({
                   className="mt-1"
                 />
                 <div className="flex-1">
-                  <div className="font-medium">Ротировать</div>
+                  <div className="font-medium">{t('sxorg.behaviorRotate')}</div>
                   <div className="text-sm text-gray-600 dark:text-gray-400 mt-1">
-                    Смена IP-адреса по запросу и при переподключении
+                    {t('sxorg.behaviorRotateDesc')}
                   </div>
                   {behaviorType === 'rotate' && (
                     <div className="mt-3 space-y-3 pl-6">
@@ -607,11 +609,11 @@ export function SXOrgCreateProxy({
                           checked={changeOnRequest}
                           onChange={(e) => setChangeOnRequest(e.target.checked)}
                         />
-                        <span className="text-sm">Менять на каждый запрос</span>
+                        <span className="text-sm">{t('sxorg.changeOnRequest')}</span>
                       </label>
                       <div className="flex items-center gap-2">
                         <label className="flex items-center gap-2">
-                          <span className="text-sm">Менять IP каждые</span>
+                          <span className="text-sm">{t('sxorg.changeEvery')}</span>
                           <Input
                             type="number"
                             min="1"
@@ -619,7 +621,7 @@ export function SXOrgCreateProxy({
                             onChange={(e) => setRotateInterval(parseInt(e.target.value) || 5)}
                             className="w-20"
                           />
-                          <span className="text-sm">мин.</span>
+                          <span className="text-sm">{t('sxorg.minutes')}</span>
                         </label>
                       </div>
                     </div>
@@ -645,10 +647,10 @@ export function SXOrgCreateProxy({
         {creating ? (
           <>
             <Loader2 className="w-4 h-4 animate-spin mr-2" />
-            Создание...
+            {t('sxorg.creating')}
           </>
         ) : (
-          'Создать прокси'
+          t('sxorg.createButton')
         )}
       </Button>
     </div>

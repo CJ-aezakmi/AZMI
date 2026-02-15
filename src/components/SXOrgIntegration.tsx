@@ -17,6 +17,7 @@ import {
 import { SXOrgCreateProxy } from './SXOrgCreateProxy';
 import SXOrgImportProxy from './SXOrgImportProxy';
 import type { Proxy } from '@/types';
+import { useTranslation } from '@/lib/i18n';
 
 interface SXOrgIntegrationProps {
   open: boolean;
@@ -25,6 +26,7 @@ interface SXOrgIntegrationProps {
 }
 
 const SXOrgIntegration = ({ open, onClose, onProxiesImported }: SXOrgIntegrationProps) => {
+  const { t } = useTranslation();
   const [apiKey, setApiKey] = useState('');
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
@@ -58,10 +60,10 @@ const SXOrgIntegration = ({ open, onClose, onProxiesImported }: SXOrgIntegration
         setIsAuthenticated(true);
         saveSXOrgApiKey(key);
       } else {
-        throw new Error('Неверный API ключ');
+        throw new Error(t('sxorg.invalidKey'));
       }
     } catch (err: any) {
-      setError(err.message || 'Ошибка авторизации');
+      setError(err.message || t('sxorg.authError'));
       setIsAuthenticated(false);
       setClient(null);
       setBalance(null);
@@ -72,7 +74,7 @@ const SXOrgIntegration = ({ open, onClose, onProxiesImported }: SXOrgIntegration
 
   const handleAuthenticate = async () => {
     if (!apiKey.trim()) {
-      setError('Введите API ключ');
+      setError(t('sxorg.enterApiKey'));
       return;
     }
     await authenticateWithKey(apiKey.trim());
@@ -144,19 +146,19 @@ const SXOrgIntegration = ({ open, onClose, onProxiesImported }: SXOrgIntegration
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Key className="w-5 h-5" />
-              SX.ORG Интеграция
+              SX.ORG {t('sxorg.title')}
             </DialogTitle>
             <DialogDescription>
-              Подключите свой аккаунт SX.ORG для управления прокси
+              {t('sxorg.description')}
             </DialogDescription>
           </DialogHeader>
 
           <div className="space-y-4 py-4">
             <div className="space-y-2">
-              <Label htmlFor="api-key">API Ключ</Label>
+              <Label htmlFor="api-key">{t('sxorg.apiKey')}</Label>
               <Input
                 id="api-key"
-                placeholder="Введите ваш API ключ"
+                placeholder={t('sxorg.apiKeyPlaceholder')}
                 value={apiKey}
                 onChange={(e) => setApiKey(e.target.value)}
                 onKeyPress={(e) => e.key === 'Enter' && handleAuthenticate()}
@@ -172,12 +174,12 @@ const SXOrgIntegration = ({ open, onClose, onProxiesImported }: SXOrgIntegration
             )}
 
             <div className="bg-gray-50 dark:bg-gray-800 p-3 rounded-md text-sm">
-              <p className="font-medium mb-2">Как получить API ключ:</p>
+              <p className="font-medium mb-2">{t('sxorg.howToGetKey')}</p>
               <ol className="list-decimal list-inside space-y-1 text-gray-600 dark:text-gray-400">
-                <li>Перейдите на сайт SX.ORG</li>
-                <li>Войдите в личный кабинет</li>
-                <li>Перейдите в раздел "API"</li>
-                <li>Скопируйте ваш API ключ</li>
+                <li>{t('sxorg.step1')}</li>
+                <li>{t('sxorg.step2')}</li>
+                <li>{t('sxorg.step3')}</li>
+                <li>{t('sxorg.step4')}</li>
               </ol>
             </div>
           </div>
@@ -189,7 +191,7 @@ const SXOrgIntegration = ({ open, onClose, onProxiesImported }: SXOrgIntegration
               className="flex-1"
             >
               <ExternalLink className="w-4 h-4 mr-2" />
-              Получить API ключ
+                            {t('sxorg.getApiKey')}
             </Button>
             <Button
               onClick={handleAuthenticate}
@@ -199,10 +201,10 @@ const SXOrgIntegration = ({ open, onClose, onProxiesImported }: SXOrgIntegration
               {isLoading ? (
                 <>
                   <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                  Проверка...
+                  {t('sxorg.checking')}
                 </>
               ) : (
-                'Подключить'
+                t('sxorg.connect')
               )}
             </Button>
           </div>
@@ -228,7 +230,7 @@ const SXOrgIntegration = ({ open, onClose, onProxiesImported }: SXOrgIntegration
         {balance && (
           <div className="flex items-center gap-4 p-4 bg-gray-50 dark:bg-gray-800 rounded-md">
             <div className="flex-1">
-              <div className="text-sm text-gray-600 dark:text-gray-400">Баланс</div>
+              <div className="text-sm text-gray-600 dark:text-gray-400">{t('sxorg.balance')}</div>
               <div className="text-xl font-bold flex items-center gap-1">
                 <DollarSign className="w-4 h-4" />
                 {parseFloat(balance.balance).toFixed(2)}
@@ -240,7 +242,7 @@ const SXOrgIntegration = ({ open, onClose, onProxiesImported }: SXOrgIntegration
               className="flex items-center gap-2"
             >
               <DollarSign className="w-4 h-4" />
-              Пополнить баланс
+                            {t('sxorg.topUp')}
             </Button>
           </div>
         )}
@@ -248,8 +250,8 @@ const SXOrgIntegration = ({ open, onClose, onProxiesImported }: SXOrgIntegration
         {/* Вкладки */}
         <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as 'create' | 'import')} className="flex-1 flex flex-col overflow-hidden">
           <TabsList className="grid w-full grid-cols-2">
-            <TabsTrigger value="create">Создать прокси</TabsTrigger>
-            <TabsTrigger value="import">Импортировать прокси</TabsTrigger>
+            <TabsTrigger value="create">{t('sxorg.createProxy')}</TabsTrigger>
+            <TabsTrigger value="import">{t('sxorg.importProxy')}</TabsTrigger>
           </TabsList>
 
           <TabsContent value="create" className="flex-1 overflow-y-auto mt-4">

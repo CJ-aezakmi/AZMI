@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import { UpdateInfo } from '@/lib/updater';
 import { Download, CheckCircle, AlertCircle } from 'lucide-react';
+import { useTranslation } from '@/lib/i18n';
 
 interface UpdateDialogProps {
   open: boolean;
@@ -13,6 +14,7 @@ interface UpdateDialogProps {
 }
 
 const UpdateDialog = ({ open, updateInfo, onUpdate, onLater }: UpdateDialogProps) => {
+  const { t } = useTranslation();
   const [isDownloading, setIsDownloading] = useState(false);
   const [downloadProgress, setDownloadProgress] = useState(0);
   const [error, setError] = useState<string | null>(null);
@@ -43,7 +45,7 @@ const UpdateDialog = ({ open, updateInfo, onUpdate, onLater }: UpdateDialogProps
     try {
       await onUpdate();
     } catch (err: any) {
-      setError(err.message || 'Ошибка при обновлении');
+      setError(err.message || t('common.error'));
       setIsDownloading(false);
     }
   };
@@ -54,10 +56,10 @@ const UpdateDialog = ({ open, updateInfo, onUpdate, onLater }: UpdateDialogProps
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Download className="w-5 h-5 text-blue-600" />
-            Доступно обновление
+            {t('updater.available')}
           </DialogTitle>
           <DialogDescription>
-            Новая версия AEZAKMI v{updateInfo.version} готова к установке
+            {t('updater.availableDesc', { version: updateInfo.version })}
           </DialogDescription>
         </DialogHeader>
 
@@ -66,27 +68,27 @@ const UpdateDialog = ({ open, updateInfo, onUpdate, onLater }: UpdateDialogProps
             <>
               <div className="space-y-2">
                 <div className="flex items-center justify-between text-sm">
-                  <span>Скачивание...</span>
+                  <span>{t('updater.downloading')}</span>
                   <span>{downloadProgress}%</span>
                 </div>
                 <Progress value={downloadProgress} />
               </div>
               <p className="text-sm text-gray-600 text-center">
-                Пожалуйста, подождите. Не закрывайте программу.
+                                {t('updater.pleaseWait')}
               </p>
             </>
           ) : error ? (
             <div className="flex items-start gap-3 p-3 bg-red-50 border border-red-200 rounded-md">
               <AlertCircle className="w-5 h-5 text-red-600 mt-0.5" />
               <div className="flex-1">
-                <p className="text-sm font-medium text-red-900">Ошибка</p>
+                <p className="text-sm font-medium text-red-900">{t('common.error')}</p>
                 <p className="text-sm text-red-700">{error}</p>
               </div>
             </div>
           ) : (
             <>
               <div className="bg-blue-50 border border-blue-200 rounded-md p-4">
-                <h4 className="font-semibold text-blue-900 mb-2">Что нового:</h4>
+                <h4 className="font-semibold text-blue-900 mb-2">{t('updater.whatsNew')}</h4>
                 <div className="text-sm text-blue-800 whitespace-pre-line max-h-40 overflow-y-auto">
                   {updateInfo.releaseNotes}
                 </div>
@@ -95,7 +97,7 @@ const UpdateDialog = ({ open, updateInfo, onUpdate, onLater }: UpdateDialogProps
               <div className="flex items-center gap-2 text-sm text-gray-600">
                 <CheckCircle className="w-4 h-4 text-green-600" />
                 <span>
-                  Опубликовано: {new Date(updateInfo.publishedAt).toLocaleDateString('ru-RU')}
+                  {t('updater.published')} {new Date(updateInfo.publishedAt).toLocaleDateString('ru-RU')}
                 </span>
               </div>
             </>
@@ -106,17 +108,17 @@ const UpdateDialog = ({ open, updateInfo, onUpdate, onLater }: UpdateDialogProps
           {!isDownloading && !error && (
             <>
               <Button variant="outline" onClick={onLater}>
-                Позже
+                {t('updater.later')}
               </Button>
               <Button onClick={handleUpdate}>
                 <Download className="w-4 h-4 mr-2" />
-                Обновить сейчас
+                {t('updater.updateNow')}
               </Button>
             </>
           )}
           {error && (
             <Button variant="outline" onClick={() => setError(null)}>
-              Закрыть
+              {t('common.close')}
             </Button>
           )}
         </DialogFooter>

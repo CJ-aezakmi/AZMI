@@ -3,6 +3,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { Progress } from '@/components/ui/progress';
 import { Button } from '@/components/ui/button';
 import { CheckCircle, XCircle, Loader2 } from 'lucide-react';
+import { useTranslation } from '@/lib/i18n';
 
 type SetupStep = 'checking' | 'ready' | 'error';
 
@@ -11,15 +12,19 @@ interface SetupWizardProps {
 }
 
 const SetupWizard = ({ onSetupComplete }: SetupWizardProps) => {
+    const { t } = useTranslation();
     const [step, setStep] = useState<SetupStep>('checking');
     const [progress, setProgress] = useState(0);
-    const [statusMessage, setStatusMessage] = useState('Проверка компонентов...');
+    const [statusMessage, setStatusMessage] = useState('');
     const [errorMessage, setErrorMessage] = useState('');
+
+    // Set initial status message after translation is available
+    useEffect(() => { if (!statusMessage) setStatusMessage(t('setup.checkingComponents')); }, []);
 
     const checkComponents = useCallback(async () => {
         setStep('checking');
         setProgress(10);
-        setStatusMessage('Проверка Node.js...');
+        setStatusMessage(t('setup.checkingNodeJS'));
 
         try {
             // Проверяем Node.js (bundled идёт в комплекте)
@@ -28,23 +33,23 @@ const SetupWizard = ({ onSetupComplete }: SetupWizardProps) => {
 
             if (!nodeInstalled) {
                 setStep('error');
-                setErrorMessage('Node.js не найден. Переустановите приложение.');
+                setErrorMessage(t('setup.nodeNotFound'));
                 return;
             }
 
-            setStatusMessage('Node.js найден ✓');
+            setStatusMessage(t('setup.nodeJSFound'));
             setProgress(100);
 
             // Всё готово — Camoufox скачивается при первом запуске профиля
             setStep('ready');
-            setStatusMessage('Все компоненты готовы!');
+            setStatusMessage(t('setup.allReady'));
 
             localStorage.setItem('aezakmi_setup_done', 'true');
             setTimeout(onSetupComplete, 800);
         } catch (err: any) {
             console.error('Setup check error:', err);
             setStep('error');
-            setErrorMessage(err?.message || 'Ошибка проверки компонентов');
+            setErrorMessage(err?.message || t('setup.componentCheckError'));
         }
     }, [onSetupComplete]);
 
@@ -80,9 +85,9 @@ const SetupWizard = ({ onSetupComplete }: SetupWizardProps) => {
 
                     {/* Status Text */}
                     <h2 className="text-xl font-semibold text-white text-center mb-2">
-                        {step === 'checking' && 'Проверка системы'}
-                        {step === 'ready' && 'Готово!'}
-                        {step === 'error' && 'Ошибка'}
+                        {step === 'checking' && t('setup.checkingSystem')}
+                        {step === 'ready' && t('common.ready')}
+                        {step === 'error' && t('common.error')}
                     </h2>
 
                     <p className="text-gray-400 text-center text-sm mb-6">
@@ -109,14 +114,14 @@ const SetupWizard = ({ onSetupComplete }: SetupWizardProps) => {
                                     variant="outline"
                                     className="flex-1 border-gray-600 text-gray-300 hover:bg-gray-700"
                                 >
-                                    Повторить
+                                    {t('common.retry')}
                                 </Button>
                                 <Button
                                     onClick={onSetupComplete}
                                     variant="outline"
                                     className="flex-1 border-gray-600 text-gray-300 hover:bg-gray-700"
                                 >
-                                    Пропустить
+                                    {t('common.skip')}
                                 </Button>
                             </div>
                         </div>

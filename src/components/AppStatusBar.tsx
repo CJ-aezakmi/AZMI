@@ -3,10 +3,12 @@ import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import { X, Download, CheckCircle, AlertTriangle, Loader2 } from 'lucide-react';
 import { checkForUpdates, shouldAutoCheck, setLastUpdateCheck, isAutoUpdateEnabled, getCurrentVersion, downloadUpdate, installUpdate, UpdateInfo } from '@/lib/updater';
+import { useTranslation } from '@/lib/i18n';
 
 type BarMode = 'hidden' | 'checking' | 'update-available' | 'updating' | 'up-to-date' | 'error';
 
 const AppStatusBar = () => {
+    const { t } = useTranslation();
     const [mode, setMode] = useState<BarMode>('hidden');
     const [message, setMessage] = useState('');
     const [progress, setProgress] = useState(0);
@@ -33,7 +35,7 @@ const AppStatusBar = () => {
         if (!isAutoUpdateEnabled() || !shouldAutoCheck()) return;
 
         setMode('checking');
-        setMessage('Проверка обновлений...');
+        setMessage(t('updater.checkingUpdates'));
 
         try {
             const update = await checkForUpdates();
@@ -42,10 +44,10 @@ const AppStatusBar = () => {
             if (update && update.available) {
                 setUpdateInfo(update);
                 setMode('update-available');
-                setMessage(`Доступна новая версия v${update.version}`);
+                setMessage(t('updater.newVersionAvailable', { version: update.version }));
             } else {
                 setMode('up-to-date');
-                setMessage('Версия актуальна — v' + getCurrentVersion());
+                setMessage(t('updater.versionUpToDate', { version: getCurrentVersion() }));
                 // Автоскрытие через 5 сек
                 setTimeout(() => {
                     setMode(prev => prev === 'up-to-date' ? 'hidden' : prev);
@@ -62,17 +64,17 @@ const AppStatusBar = () => {
         if (!updateInfo) return;
 
         setMode('updating');
-        setMessage('Скачивание обновления...');
+        setMessage(t('updater.downloadingUpdate'));
         setProgress(0);
 
         try {
             const installerPath = await downloadUpdate(updateInfo.downloadUrl);
 
-            setMessage('Запуск установщика...');
+            setMessage(t('updater.launchingInstaller'));
             await installUpdate(installerPath);
         } catch (err: any) {
             setMode('error');
-            setMessage(`Ошибка обновления: ${err?.message || 'неизвестная ошибка'}`);
+            setMessage(t('updater.updateError', { message: err?.message || 'unknown error' }));
         }
     };
 
@@ -122,7 +124,7 @@ const AppStatusBar = () => {
                     className="h-7 text-xs bg-white/20 hover:bg-white/30 text-white border-0"
                 >
                     <Download className="w-3 h-3 mr-1" />
-                    Обновить
+                    {t('statusBar.update')}
                 </Button>
             )}
 
@@ -134,7 +136,7 @@ const AppStatusBar = () => {
                     onClick={checkUpdates}
                     className="h-7 text-xs bg-white/20 hover:bg-white/30 text-white border-0"
                 >
-                    Повторить
+                    {t('statusBar.retry')}
                 </Button>
             )}
 

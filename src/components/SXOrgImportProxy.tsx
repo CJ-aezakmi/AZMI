@@ -5,6 +5,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Loader2, Download, Search, CheckCircle, Trash2, RefreshCw } from 'lucide-react';
 import { SXOrgClient, SXOrgProxyPort } from '@/lib/sxorg-api';
 import { toast } from 'sonner';
+import { useTranslation } from '@/lib/i18n';
 
 interface SXOrgImportProxyProps {
   client: SXOrgClient;
@@ -12,6 +13,7 @@ interface SXOrgImportProxyProps {
 }
 
 const SXOrgImportProxy = ({ client, onProxiesImported }: SXOrgImportProxyProps) => {
+  const { t } = useTranslation();
   const [isLoading, setIsLoading] = useState(false);
   const [proxies, setProxies] = useState<SXOrgProxyPort[]>([]);
   const [selectedProxies, setSelectedProxies] = useState<Set<number>>(new Set());
@@ -29,7 +31,7 @@ const SXOrgImportProxy = ({ client, onProxiesImported }: SXOrgImportProxyProps) 
       const response = await client.getProxies();
       setProxies(response.data || []);
     } catch (err: any) {
-      const errorMsg = err.message || 'Ошибка загрузки прокси';
+      const errorMsg = err.message || t('sxorg.loadError');
       setError(errorMsg);
       toast.error(errorMsg);
       setProxies([]);
@@ -59,7 +61,7 @@ const SXOrgImportProxy = ({ client, onProxiesImported }: SXOrgImportProxyProps) 
   const handleImport = () => {
     const selected = proxies.filter(p => selectedProxies.has(p.id));
     if (selected.length === 0) {
-      toast.error('Выберите хотя бы один прокси');
+      toast.error(t('sxorg.selectAtLeastOne'));
       return;
     }
 
@@ -114,34 +116,34 @@ const SXOrgImportProxy = ({ client, onProxiesImported }: SXOrgImportProxyProps) 
     });
 
     onProxiesImported(convertedProxies);
-    toast.success(`Импортировано ${selected.length} прокси`);
+    toast.success(t('sxorg.importedCount', { count: String(selected.length) }));
     setSelectedProxies(new Set());
   };
 
   const handleDelete = async (proxyId: number) => {
-    if (!confirm('Удалить прокси?')) return;
+    if (!confirm(t('sxorg.confirmDeleteProxy'))) return;
 
     try {
       await client.deleteProxy(proxyId);
-      toast.success('Прокси удален');
+      toast.success(t('sxorg.proxyDeleted'));
       loadProxies();
     } catch (err: any) {
-      toast.error(err.message || 'Ошибка удаления прокси');
+      toast.error(err.message || t('sxorg.proxyDeleteError'));
     }
   };
 
   const handleRefreshIP = async (proxy: SXOrgProxyPort) => {
     if (!proxy.refresh_link) {
-      toast.error('Ссылка для обновления IP недоступна');
+      toast.error(t('sxorg.refreshIPNoLink'));
       return;
     }
 
     try {
       await client.refreshProxyIP(proxy.refresh_link);
-      toast.success('IP адрес обновлен');
+      toast.success(t('sxorg.refreshIPSuccess'));
       await loadProxies();
     } catch (err: any) {
-      toast.error(err.message || 'Ошибка обновления IP');
+      toast.error(err.message || t('sxorg.refreshIPError'));
     }
   };
 
@@ -170,7 +172,7 @@ const SXOrgImportProxy = ({ client, onProxiesImported }: SXOrgImportProxyProps) 
         <div className="relative flex-1">
           <Search className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
           <Input
-            placeholder="Введите название гео, прокси логин или IP"
+            placeholder={t('sxorg.searchPlaceholder')}
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="pl-9"
@@ -185,7 +187,7 @@ const SXOrgImportProxy = ({ client, onProxiesImported }: SXOrgImportProxyProps) 
       <div className="flex gap-2">
         <Button variant="outline" size="sm" onClick={handleSelectAll}>
           <CheckCircle className="w-4 h-4 mr-2" />
-          Выбрать все
+          {t('sxorg.selectAllButton')}
         </Button>
         <Button
           onClick={handleImport}
@@ -193,7 +195,7 @@ const SXOrgImportProxy = ({ client, onProxiesImported }: SXOrgImportProxyProps) 
           size="sm"
         >
           <Download className="w-4 h-4 mr-2" />
-          Импортировать ({selectedProxies.size})
+          {t('sxorg.importButton', { count: String(selectedProxies.size) })}
         </Button>
       </div>
 
@@ -207,7 +209,7 @@ const SXOrgImportProxy = ({ client, onProxiesImported }: SXOrgImportProxyProps) 
       <div className="border rounded-lg divide-y max-h-96 overflow-y-auto">
         {filteredProxies.length === 0 ? (
           <div className="p-8 text-center text-gray-500">
-            {searchQuery ? 'Прокси не найдены' : 'У вас пока нет прокси'}
+            {searchQuery ? t('sxorg.noProxiesFound') : t('sxorg.noProxiesYet')}
           </div>
         ) : (
           filteredProxies.map(proxy => (
@@ -299,7 +301,7 @@ const SXOrgImportProxy = ({ client, onProxiesImported }: SXOrgImportProxyProps) 
 
       {/* Информация */}
       <div className="text-sm text-gray-600 dark:text-gray-400">
-        Найдено прокси: {filteredProxies.length} из {proxies.length}
+        {t('sxorg.foundProxies', { filtered: String(filteredProxies.length), total: String(proxies.length) })}
       </div>
     </div>
   );

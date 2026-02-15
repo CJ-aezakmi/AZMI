@@ -11,6 +11,7 @@ import { Profile, Proxy, BrowserEngine, MobileEmulation, MOBILE_DEVICES, CookieE
 import { Zap, Globe, Smartphone, Monitor, Upload, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import sxorgLogo from '@/assets/sxorg-logo.svg';
+import { useTranslation } from '@/lib/i18n';
 
 interface ProfileModalProps {
   open: boolean;
@@ -23,6 +24,7 @@ interface ProfileModalProps {
 }
 
 const ProfileModal = ({ open, onOpenChange, onSave, profile, proxies, folders = [], onOpenSXOrg }: ProfileModalProps) => {
+  const { t } = useTranslation();
   const [formData, setFormData] = useState({
     name: '',
     notes: '',
@@ -181,13 +183,13 @@ const ProfileModal = ({ open, onOpenChange, onSave, profile, proxies, folders = 
 
   const handleQuickProxyApply = async () => {
     if (!quickProxyInput.trim()) {
-      alert('Введите прокси');
+      alert(t('profileModal.enterProxy'));
       return;
     }
 
     const parsed = parseProxyString(quickProxyInput);
     if (!parsed) {
-      alert('Не удалось распознать формат прокси. Попробуйте другой формат.');
+      alert(t('profileModal.proxyParseFailed'));
       return;
     }
 
@@ -196,7 +198,7 @@ const ProfileModal = ({ open, onOpenChange, onSave, profile, proxies, folders = 
 
     setFormData(updatedData);
     setQuickProxyInput('');
-    alert('Прокси применен! Timezone и язык будут определены автоматически при запуске.');
+    alert(t('profileModal.proxyApplied'));
   };
 
   const handleSelectProxy = (index: number) => {
@@ -217,7 +219,7 @@ const ProfileModal = ({ open, onOpenChange, onSave, profile, proxies, folders = 
 
   const handleSubmit = () => {
     if (!formData.name.trim()) {
-      alert('Введите название профиля');
+      alert(t('profileModal.enterProfileName'));
       return;
     }
 
@@ -265,41 +267,41 @@ const ProfileModal = ({ open, onOpenChange, onSave, profile, proxies, folders = 
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>{profile ? 'Редактировать профиль' : 'Создать новый профиль'}</DialogTitle>
+          <DialogTitle>{profile ? t('profileModal.titleEdit') : t('profileModal.titleCreate')}</DialogTitle>
         </DialogHeader>
 
         <Tabs defaultValue="basic" className="w-full">
           <TabsList className="grid w-full grid-cols-6">
-            <TabsTrigger value="basic">Основные</TabsTrigger>
-            <TabsTrigger value="proxy">Прокси</TabsTrigger>
-            <TabsTrigger value="browser">Браузер</TabsTrigger>
-            <TabsTrigger value="device">Устройство</TabsTrigger>
-            <TabsTrigger value="cookies">🍪 Cookies</TabsTrigger>
-            <TabsTrigger value="antidetect">Антидетект</TabsTrigger>
+            <TabsTrigger value="basic">{t('profileModal.tabBasic')}</TabsTrigger>
+            <TabsTrigger value="proxy">{t('profileModal.tabProxy')}</TabsTrigger>
+            <TabsTrigger value="browser">{t('profileModal.tabBrowser')}</TabsTrigger>
+            <TabsTrigger value="device">{t('profileModal.tabDevice')}</TabsTrigger>
+            <TabsTrigger value="cookies">{t('profileModal.tabCookies')}</TabsTrigger>
+            <TabsTrigger value="antidetect">{t('profileModal.tabAntidetect')}</TabsTrigger>
           </TabsList>
 
           <TabsContent value="basic" className="space-y-4">
             <div>
-              <Label htmlFor="name">Название профиля *</Label>
+              <Label htmlFor="name">{t('profileModal.profileName')}</Label>
               <Input
                 id="name"
                 value={formData.name}
                 onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                placeholder="Мой профиль"
+                placeholder={t('profileModal.profileNamePlaceholder')}
               />
             </div>
 
             <div>
-              <Label htmlFor="folder">Папка</Label>
+              <Label htmlFor="folder">{t('profileModal.folder')}</Label>
               <Select
                 value={formData.folder}
                 onValueChange={(value) => setFormData({ ...formData, folder: value === '_none_' ? '' : value })}
               >
                 <SelectTrigger>
-                  <SelectValue placeholder="Без папки" />
+                  <SelectValue placeholder={t('profileModal.noFolder')} />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="_none_">Без папки</SelectItem>
+                  <SelectItem value="_none_">{t('profileModal.noFolder')}</SelectItem>
                   {folders.map((folder) => (
                     <SelectItem key={folder} value={folder}>{folder}</SelectItem>
                   ))}
@@ -308,12 +310,12 @@ const ProfileModal = ({ open, onOpenChange, onSave, profile, proxies, folders = 
             </div>
 
             <div>
-              <Label htmlFor="notes">Заметки</Label>
+              <Label htmlFor="notes">{t('profileModal.notes')}</Label>
               <Textarea
                 id="notes"
                 value={formData.notes}
                 onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-                placeholder="Дополнительная информация о профиле"
+                placeholder={t('profileModal.notesPlaceholder')}
                 rows={3}
               />
             </div>
@@ -321,21 +323,21 @@ const ProfileModal = ({ open, onOpenChange, onSave, profile, proxies, folders = 
 
           <TabsContent value="browser" className="space-y-4">
             <div>
-              <Label htmlFor="browserEngine">Движок браузера</Label>
+              <Label htmlFor="browserEngine">{t('profileModal.engineLabel')}</Label>
               <div className="flex items-center gap-2 px-3 py-2 bg-green-900/30 border border-green-600/30 rounded-md text-sm">
                 <span>🦊</span>
-                <span className="text-green-400 font-medium">Camoufox — антидетект Firefox</span>
+                <span className="text-green-400 font-medium">{t('profileModal.camoufoxLabel')}</span>
               </div>
             </div>
 
             <div>
-              <Label htmlFor="userAgent">User Agent</Label>
+              <Label htmlFor="userAgent">{t('profileModal.userAgent')}</Label>
               <Select value={formData.userAgent} onValueChange={(value) => setFormData({ ...formData, userAgent: value })}>
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="auto">Автоматический</SelectItem>
+                  <SelectItem value="auto">{t('profileModal.uaAuto')}</SelectItem>
                   <SelectItem value="chrome_win">Chrome Windows</SelectItem>
                   <SelectItem value="chrome_mac">Chrome macOS</SelectItem>
                   <SelectItem value="firefox_win">Firefox Windows</SelectItem>
@@ -347,7 +349,7 @@ const ProfileModal = ({ open, onOpenChange, onSave, profile, proxies, folders = 
 
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <Label htmlFor="screenWidth">Ширина экрана</Label>
+                <Label htmlFor="screenWidth">{t('profileModal.screenWidth')}</Label>
                 <Input
                   id="screenWidth"
                   type="number"
@@ -358,7 +360,7 @@ const ProfileModal = ({ open, onOpenChange, onSave, profile, proxies, folders = 
                 />
               </div>
               <div>
-                <Label htmlFor="screenHeight">Высота экрана</Label>
+                <Label htmlFor="screenHeight">{t('profileModal.screenHeight')}</Label>
                 <Input
                   id="screenHeight"
                   type="number"
@@ -372,7 +374,7 @@ const ProfileModal = ({ open, onOpenChange, onSave, profile, proxies, folders = 
 
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <Label htmlFor="language">Язык {formData.proxyEnabled && <span className="text-xs text-muted-foreground">(автоопределение)</span>}</Label>
+                <Label htmlFor="language">{t('profileModal.language')} {formData.proxyEnabled && <span className="text-xs text-muted-foreground">({t('profileModal.languageAutoDetect')})</span>}</Label>
                 <Select value={formData.language} onValueChange={(value) => setFormData({ ...formData, language: value })} disabled={formData.proxyEnabled}>
                   <SelectTrigger>
                     <SelectValue />
@@ -388,7 +390,7 @@ const ProfileModal = ({ open, onOpenChange, onSave, profile, proxies, folders = 
                 </Select>
               </div>
               <div>
-                <Label htmlFor="timezone">Часовой пояс {formData.proxyEnabled && <span className="text-xs text-muted-foreground">(автоопределение)</span>}</Label>
+                <Label htmlFor="timezone">{t('profileModal.timezone')} {formData.proxyEnabled && <span className="text-xs text-muted-foreground">({t('profileModal.timezoneAutoDetect')})</span>}</Label>
                 <Select value={formData.timezone} onValueChange={(value) => setFormData({ ...formData, timezone: value })} disabled={formData.proxyEnabled}>
                   <SelectTrigger>
                     <SelectValue />
@@ -418,14 +420,14 @@ const ProfileModal = ({ open, onOpenChange, onSave, profile, proxies, folders = 
               />
               <Label htmlFor="mobileEnabled" className="flex items-center gap-2">
                 <Smartphone className="w-4 h-4" />
-                Эмуляция мобильного устройства
+                {t('profileModal.mobileEmulation')}
               </Label>
             </div>
 
             {formData.mobileEnabled ? (
               <>
                 <div>
-                  <Label>Устройство</Label>
+                  <Label>{t('profileModal.selectDevice')}</Label>
                   <Select value={formData.mobileDevice} onValueChange={(value) => {
                     const device = MOBILE_DEVICES[value];
                     if (device) {
@@ -441,7 +443,7 @@ const ProfileModal = ({ open, onOpenChange, onSave, profile, proxies, folders = 
                     }
                   }}>
                     <SelectTrigger>
-                      <SelectValue placeholder="Выберите устройство" />
+                      <SelectValue placeholder={t('profileModal.selectDevice')} />
                     </SelectTrigger>
                     <SelectContent>
                       {Object.keys(MOBILE_DEVICES).map((name) => (
@@ -461,7 +463,7 @@ const ProfileModal = ({ open, onOpenChange, onSave, profile, proxies, folders = 
             ) : (
               <div className="flex items-center gap-2 text-gray-500 py-4">
                 <Monitor className="w-5 h-5" />
-                <span>Режим десктопа — стандартное разрешение</span>
+                <span>{t('profileModal.desktopMode')}</span>
               </div>
             )}
           </TabsContent>
@@ -469,9 +471,9 @@ const ProfileModal = ({ open, onOpenChange, onSave, profile, proxies, folders = 
           <TabsContent value="cookies" className="space-y-4">
             <div className="flex items-center justify-between">
               <div>
-                <Label>Импорт Cookies</Label>
+                <Label>{t('profileModal.importCookies')}</Label>
                 <p className="text-xs text-muted-foreground mt-1">
-                  Поддерживается JSON (EditThisCookie) и Netscape TXT формат
+                  {t('profileModal.cookiesFormatHint')}
                 </p>
               </div>
               <div className="flex gap-2">
@@ -529,12 +531,12 @@ const ProfileModal = ({ open, onOpenChange, onSave, profile, proxies, folders = 
                             }
                             if (parsed.length > 0) {
                               setCookies(prev => [...prev, ...parsed]);
-                              toast.success(`Загружено ${parsed.length} cookies`);
+                              toast.success(t('profileModal.cookiesLoadedToast', { count: String(parsed.length) }));
                             } else {
-                              toast.error('Не удалось распознать cookies');
+                              toast.error(t('profileModal.cookiesRecognizeFailed'));
                             }
                           } catch {
-                            toast.error('Ошибка чтения файла');
+                            toast.error(t('profileModal.cookiesFileError'));
                           }
                         };
                         reader.readAsText(file);
@@ -544,7 +546,7 @@ const ProfileModal = ({ open, onOpenChange, onSave, profile, proxies, folders = 
                   }}
                 >
                   <Upload className="w-4 h-4 mr-1" />
-                  Загрузить файл
+                  {t('profileModal.uploadFile')}
                 </Button>
                 {cookies.length > 0 && (
                   <Button
@@ -553,11 +555,11 @@ const ProfileModal = ({ open, onOpenChange, onSave, profile, proxies, folders = 
                     size="sm"
                     onClick={() => {
                       setCookies([]);
-                      toast.success('Все cookies удалены');
+                      toast.success(t('profileModal.allCookiesDeleted'));
                     }}
                   >
                     <Trash2 className="w-4 h-4 mr-1" />
-                    Очистить
+                    {t('profileModal.clearAll')}
                   </Button>
                 )}
               </div>
@@ -566,15 +568,15 @@ const ProfileModal = ({ open, onOpenChange, onSave, profile, proxies, folders = 
             {cookies.length > 0 ? (
               <div className="border rounded-lg overflow-hidden">
                 <div className="bg-gray-50 px-3 py-2 text-sm font-medium border-b">
-                  Загружено cookies: {cookies.length}
+                  {t('profileModal.cookiesLoaded', { count: String(cookies.length) })}
                 </div>
                 <div className="max-h-[300px] overflow-y-auto">
                   <table className="w-full text-xs">
                     <thead className="bg-gray-50 sticky top-0">
                       <tr>
-                        <th className="px-3 py-1.5 text-left">Домен</th>
-                        <th className="px-3 py-1.5 text-left">Имя</th>
-                        <th className="px-3 py-1.5 text-left">Значение</th>
+                        <th className="px-3 py-1.5 text-left">{t('profileModal.cookiesDomain')}</th>
+                        <th className="px-3 py-1.5 text-left">{t('profileModal.cookiesName')}</th>
+                        <th className="px-3 py-1.5 text-left">{t('profileModal.cookiesValue')}</th>
                         <th className="px-3 py-1.5 text-center w-8"></th>
                       </tr>
                     </thead>
@@ -602,8 +604,8 @@ const ProfileModal = ({ open, onOpenChange, onSave, profile, proxies, folders = 
             ) : (
               <div className="text-center text-gray-400 py-8 border rounded-lg border-dashed">
                 <p className="text-lg mb-1">🍪</p>
-                <p className="text-sm">Нет загруженных cookies</p>
-                <p className="text-xs mt-1">Нажмите "Загрузить файл" для импорта</p>
+                <p className="text-sm">{t('profileModal.noCookies')}</p>
+                <p className="text-xs mt-1">{t('profileModal.noCookiesHint')}</p>
               </div>
             )}
           </TabsContent>
@@ -615,7 +617,7 @@ const ProfileModal = ({ open, onOpenChange, onSave, profile, proxies, folders = 
                 checked={formData.proxyEnabled}
                 onCheckedChange={(checked) => setFormData({ ...formData, proxyEnabled: checked as boolean })}
               />
-              <Label htmlFor="proxyEnabled">Использовать прокси</Label>
+              <Label htmlFor="proxyEnabled">{t('profileModal.useProxy')}</Label>
             </div>
 
             {formData.proxyEnabled && (
@@ -628,7 +630,7 @@ const ProfileModal = ({ open, onOpenChange, onSave, profile, proxies, folders = 
                     variant={proxyInputMode === 'select' ? 'default' : 'outline'}
                     onClick={() => setProxyInputMode('select')}
                   >
-                    Выбрать из списка
+                    {t('profileModal.selectFromList')}
                   </Button>
                   <Button
                     type="button"
@@ -637,7 +639,7 @@ const ProfileModal = ({ open, onOpenChange, onSave, profile, proxies, folders = 
                     onClick={() => setProxyInputMode('quick')}
                   >
                     <Zap className="w-4 h-4 mr-1" />
-                    Быстрый ввод
+                    {t('profileModal.quickInput')}
                   </Button>
                   <Button
                     type="button"
@@ -645,7 +647,7 @@ const ProfileModal = ({ open, onOpenChange, onSave, profile, proxies, folders = 
                     variant={proxyInputMode === 'manual' ? 'default' : 'outline'}
                     onClick={() => setProxyInputMode('manual')}
                   >
-                    Ручной ввод
+                    {t('profileModal.manualInput')}
                   </Button>
                   {onOpenSXOrg && (
                     <Button
@@ -663,10 +665,10 @@ const ProfileModal = ({ open, onOpenChange, onSave, profile, proxies, folders = 
                 {/* Выбор из списка */}
                 {proxyInputMode === 'select' && (
                   <div>
-                    <Label>Выберите прокси из списка</Label>
+                    <Label>{t('profileModal.selectProxyFromList')}</Label>
                     {proxies.length === 0 ? (
                       <div className="text-sm text-gray-600 p-4 bg-gray-50 rounded-lg">
-                        Нет сохраненных прокси. Добавьте прокси в разделе "Прокси" или используйте быстрый ввод.
+                        {t('profileModal.noSavedProxies')}
                       </div>
                     ) : (
                       <div className="space-y-2 max-h-48 overflow-y-auto border rounded-lg p-2">
@@ -681,7 +683,7 @@ const ProfileModal = ({ open, onOpenChange, onSave, profile, proxies, folders = 
                               {proxy.type.toUpperCase()}://{proxy.host}:{proxy.port}
                             </div>
                             <div className="text-xs text-gray-600">
-                              {proxy.username ? `${proxy.username}:***` : 'Без авторизации'}
+                              {proxy.username ? `${proxy.username}:***` : t('common.noAuth')}
                             </div>
                           </button>
                         ))}
@@ -694,7 +696,7 @@ const ProfileModal = ({ open, onOpenChange, onSave, profile, proxies, folders = 
                 {proxyInputMode === 'quick' && (
                   <div className="space-y-3">
                     <div>
-                      <Label htmlFor="quickProxy">Вставьте прокси в любом формате</Label>
+                      <Label htmlFor="quickProxy">{t('profileModal.pasteProxy')}</Label>
                       <div className="flex gap-2">
                         <Input
                           id="quickProxy"
@@ -704,12 +706,12 @@ const ProfileModal = ({ open, onOpenChange, onSave, profile, proxies, folders = 
                           className="font-mono"
                         />
                         <Button type="button" onClick={handleQuickProxyApply}>
-                          Применить
+                          {t('common.apply')}
                         </Button>
                       </div>
                     </div>
                     <div className="bg-blue-50 p-3 rounded-lg text-sm">
-                      <p className="font-semibold mb-1">✨ Поддерживаемые форматы:</p>
+                      <p className="font-semibold mb-1">{t('profileModal.supportedFormats')}</p>
                       <ul className="text-xs space-y-1 text-gray-700">
                         <li>• protocol://username:password@host:port</li>
                         <li>• username:password@host:port</li>
@@ -726,7 +728,7 @@ const ProfileModal = ({ open, onOpenChange, onSave, profile, proxies, folders = 
                   <>
                     <div className="grid grid-cols-3 gap-4">
                       <div>
-                        <Label htmlFor="proxyType">Тип</Label>
+                        <Label htmlFor="proxyType">{t('profileModal.proxyType')}</Label>
                         <Select value={formData.proxyType} onValueChange={(value) => setFormData({ ...formData, proxyType: value })}>
                           <SelectTrigger>
                             <SelectValue />
@@ -740,7 +742,7 @@ const ProfileModal = ({ open, onOpenChange, onSave, profile, proxies, folders = 
                         </Select>
                       </div>
                       <div>
-                        <Label htmlFor="proxyHost">Хост</Label>
+                        <Label htmlFor="proxyHost">{t('profileModal.proxyHost')}</Label>
                         <Input
                           id="proxyHost"
                           value={formData.proxyHost}
@@ -749,7 +751,7 @@ const ProfileModal = ({ open, onOpenChange, onSave, profile, proxies, folders = 
                         />
                       </div>
                       <div>
-                        <Label htmlFor="proxyPort">Порт</Label>
+                        <Label htmlFor="proxyPort">{t('profileModal.proxyPort')}</Label>
                         <Input
                           id="proxyPort"
                           value={formData.proxyPort}
@@ -761,7 +763,7 @@ const ProfileModal = ({ open, onOpenChange, onSave, profile, proxies, folders = 
 
                     <div className="grid grid-cols-2 gap-4">
                       <div>
-                        <Label htmlFor="proxyUsername">Логин</Label>
+                        <Label htmlFor="proxyUsername">{t('profileModal.proxyLogin')}</Label>
                         <Input
                           id="proxyUsername"
                           value={formData.proxyUsername}
@@ -770,7 +772,7 @@ const ProfileModal = ({ open, onOpenChange, onSave, profile, proxies, folders = 
                         />
                       </div>
                       <div>
-                        <Label htmlFor="proxyPassword">Пароль</Label>
+                        <Label htmlFor="proxyPassword">{t('profileModal.proxyPassword')}</Label>
                         <Input
                           id="proxyPassword"
                           type="password"
@@ -786,7 +788,7 @@ const ProfileModal = ({ open, onOpenChange, onSave, profile, proxies, folders = 
                 {/* Текущие настройки прокси */}
                 {formData.proxyHost && formData.proxyPort && (
                   <div className="bg-green-50 p-3 rounded-lg border border-green-200">
-                    <p className="text-sm font-semibold text-green-800 mb-1">✅ Текущий прокси:</p>
+                    <p className="text-sm font-semibold text-green-800 mb-1">{t('profileModal.currentProxy')}</p>
                     <p className="text-sm text-green-700 font-mono">
                       {formData.proxyType.toUpperCase()}://{formData.proxyHost}:{formData.proxyPort}
                       {formData.proxyUsername && ` (${formData.proxyUsername})`}
@@ -805,7 +807,7 @@ const ProfileModal = ({ open, onOpenChange, onSave, profile, proxies, folders = 
                   checked={formData.canvasNoise}
                   onCheckedChange={(checked) => setFormData({ ...formData, canvasNoise: checked as boolean })}
                 />
-                <Label htmlFor="canvasNoise">Canvas шум (защита от Canvas fingerprinting)</Label>
+                <Label htmlFor="canvasNoise">{t('profileModal.canvasNoise')}</Label>
               </div>
 
               <div className="flex items-center space-x-2">
@@ -814,7 +816,7 @@ const ProfileModal = ({ open, onOpenChange, onSave, profile, proxies, folders = 
                   checked={formData.webglNoise}
                   onCheckedChange={(checked) => setFormData({ ...formData, webglNoise: checked as boolean })}
                 />
-                <Label htmlFor="webglNoise">WebGL шум (защита от WebGL fingerprinting)</Label>
+                <Label htmlFor="webglNoise">{t('profileModal.webglNoise')}</Label>
               </div>
 
               <div className="flex items-center space-x-2">
@@ -823,7 +825,7 @@ const ProfileModal = ({ open, onOpenChange, onSave, profile, proxies, folders = 
                   checked={formData.audioNoise}
                   onCheckedChange={(checked) => setFormData({ ...formData, audioNoise: checked as boolean })}
                 />
-                <Label htmlFor="audioNoise">Audio шум (защита от Audio fingerprinting)</Label>
+                <Label htmlFor="audioNoise">{t('profileModal.audioNoise')}</Label>
               </div>
 
               <div className="flex items-center space-x-2">
@@ -832,7 +834,7 @@ const ProfileModal = ({ open, onOpenChange, onSave, profile, proxies, folders = 
                   checked={formData.blockWebRTC}
                   onCheckedChange={(checked) => setFormData({ ...formData, blockWebRTC: checked as boolean })}
                 />
-                <Label htmlFor="blockWebRTC">Блокировать WebRTC (скрытие реального IP)</Label>
+                <Label htmlFor="blockWebRTC">{t('profileModal.blockWebRTC')}</Label>
               </div>
 
               <div className="flex items-center space-x-2">
@@ -841,13 +843,13 @@ const ProfileModal = ({ open, onOpenChange, onSave, profile, proxies, folders = 
                   checked={formData.spoofGeolocation}
                   onCheckedChange={(checked) => setFormData({ ...formData, spoofGeolocation: checked as boolean })}
                 />
-                <Label htmlFor="spoofGeolocation">Подмена геолокации</Label>
+                <Label htmlFor="spoofGeolocation">{t('profileModal.spoofGeolocation')}</Label>
               </div>
 
               {formData.spoofGeolocation && (
                 <div className="grid grid-cols-2 gap-4 ml-6">
                   <div>
-                    <Label htmlFor="latitude">Широта</Label>
+                    <Label htmlFor="latitude">{t('profileModal.latitude')}</Label>
                     <Input
                       id="latitude"
                       type="number"
@@ -858,7 +860,7 @@ const ProfileModal = ({ open, onOpenChange, onSave, profile, proxies, folders = 
                     />
                   </div>
                   <div>
-                    <Label htmlFor="longitude">Долгота</Label>
+                    <Label htmlFor="longitude">{t('profileModal.longitude')}</Label>
                     <Input
                       id="longitude"
                       type="number"
@@ -876,10 +878,10 @@ const ProfileModal = ({ open, onOpenChange, onSave, profile, proxies, folders = 
 
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>
-            Отмена
+            {t('common.cancel')}
           </Button>
           <Button onClick={handleSubmit}>
-            Сохранить профиль
+            {t('profileModal.saveProfile')}
           </Button>
         </DialogFooter>
       </DialogContent>

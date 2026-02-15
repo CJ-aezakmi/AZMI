@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Proxy } from '@/types';
 import { getGeoIPInfo } from '@/lib/geoip';
+import { useTranslation } from '@/lib/i18n';
 
 interface ProxyModalProps {
   open: boolean;
@@ -16,6 +17,7 @@ interface ProxyModalProps {
 }
 
 const ProxyModal = ({ open, onOpenChange, onAdd }: ProxyModalProps) => {
+  const { t } = useTranslation();
   const [proxyText, setProxyText] = useState('');
   const [quickProxyInput, setQuickProxyInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -199,7 +201,7 @@ const ProxyModal = ({ open, onOpenChange, onAdd }: ProxyModalProps) => {
     }
 
     if (proxies.length === 0) {
-      alert('Не удалось распознать ни одного прокси');
+      alert(t('proxyModal.noProxiesParsed'));
       return;
     }
 
@@ -215,13 +217,13 @@ const ProxyModal = ({ open, onOpenChange, onAdd }: ProxyModalProps) => {
 
   const handleQuickSubmit = async () => {
     if (!quickProxyInput.trim()) {
-      alert('Введите прокси');
+      alert(t('profileModal.enterProxy'));
       return;
     }
 
     const proxy = parseProxyLine(quickProxyInput);
     if (!proxy) {
-      alert('Не удалось распознать формат прокси. Попробуйте другой формат.');
+      alert(t('profileModal.proxyParseFailed'));
       return;
     }
 
@@ -240,7 +242,7 @@ const ProxyModal = ({ open, onOpenChange, onAdd }: ProxyModalProps) => {
 
   const handleManualSubmit = async () => {
     if (!manualHost || !manualPort) {
-      alert('Заполните хост и порт');
+      alert(t('proxyModal.fillHostPort'));
       return;
     }
 
@@ -274,19 +276,19 @@ const ProxyModal = ({ open, onOpenChange, onAdd }: ProxyModalProps) => {
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-3xl">
         <DialogHeader>
-          <DialogTitle>Добавить прокси</DialogTitle>
+          <DialogTitle>{t('proxyModal.title')}</DialogTitle>
         </DialogHeader>
 
         <Tabs defaultValue="quick" className="w-full">
           <TabsList className="grid w-full grid-cols-3">
-            <TabsTrigger value="quick">Быстрый ввод</TabsTrigger>
-            <TabsTrigger value="bulk">Массовый ввод</TabsTrigger>
-            <TabsTrigger value="manual">Ручной ввод</TabsTrigger>
+            <TabsTrigger value="quick">{t('proxyModal.quickInput')}</TabsTrigger>
+            <TabsTrigger value="bulk">{t('proxyModal.bulkInput')}</TabsTrigger>
+            <TabsTrigger value="manual">{t('proxyModal.manualInput')}</TabsTrigger>
           </TabsList>
 
           <TabsContent value="quick" className="space-y-4">
             <div>
-              <Label htmlFor="quickProxy">Вставьте прокси в любом формате</Label>
+              <Label htmlFor="quickProxy">{t('proxyModal.pastePlaceholder')}</Label>
               <Input
                 id="quickProxy"
                 value={quickProxyInput}
@@ -297,7 +299,7 @@ const ProxyModal = ({ open, onOpenChange, onAdd }: ProxyModalProps) => {
             </div>
 
             <div className="bg-blue-50 p-4 rounded-lg">
-              <p className="font-semibold text-sm mb-2">✨ Автоматическое распознавание форматов:</p>
+              <p className="font-semibold text-sm mb-2">{t('proxyModal.autoRecognition')}</p>
               <ul className="text-sm space-y-1 text-gray-700">
                 <li>• <code>protocol://username:password@host:port</code></li>
                 <li>• <code>username:password@host:port</code></li>
@@ -306,12 +308,12 @@ const ProxyModal = ({ open, onOpenChange, onAdd }: ProxyModalProps) => {
                 <li>• <code>host:port</code></li>
               </ul>
               <p className="text-sm mt-2 text-gray-600">
-                Поддерживаемые протоколы: <strong>http, https, socks4, socks5</strong>
+                {t('proxyModal.supportedProtocols')} <strong>http, https, socks4, socks5</strong>
               </p>
             </div>
 
             <div className="bg-gray-50 p-4 rounded-lg">
-              <p className="font-semibold text-sm mb-2">Примеры:</p>
+              <p className="font-semibold text-sm mb-2">{t('proxyModal.examples')}</p>
               <ul className="text-sm space-y-1 font-mono text-gray-700">
                 <li>socks5://user:pass@127.0.0.1:1080</li>
                 <li>http://192.168.1.1:8080</li>
@@ -322,45 +324,45 @@ const ProxyModal = ({ open, onOpenChange, onAdd }: ProxyModalProps) => {
 
             {/* Preview parsed proxy for quick input */}
             <div className="mt-4">
-              <Label>Предпросмотр распарсенного прокси</Label>
+              <Label>{t('proxyModal.previewLabel')}</Label>
               {quickPreview ? (
                 <div className="mt-2 p-3 border rounded bg-white text-sm font-mono text-gray-800">
-                  <div><strong>Тип:</strong> {quickPreview.type}</div>
-                  <div><strong>Хост:</strong> {quickPreview.host}</div>
-                  <div><strong>Порт:</strong> {quickPreview.port}</div>
-                  <div><strong>Логин:</strong> {quickPreview.username ?? quickPreview.login ?? '-'}</div>
-                  <div><strong>Пароль:</strong> {quickPreview.password ?? '-'}</div>
+                  <div><strong>{t('proxyModal.previewType')}:</strong> {quickPreview.type}</div>
+                  <div><strong>{t('proxyModal.previewHost')}:</strong> {quickPreview.host}</div>
+                  <div><strong>{t('proxyModal.previewPort')}:</strong> {quickPreview.port}</div>
+                  <div><strong>{t('proxyModal.previewLogin')}:</strong> {quickPreview.username ?? quickPreview.login ?? '-'}</div>
+                  <div><strong>{t('proxyModal.previewPassword')}:</strong> {quickPreview.password ?? '-'}</div>
                 </div>
               ) : (
-                <div className="mt-2 text-sm text-gray-500">Ни одного валидного прокси в поле быстрого ввода</div>
+                <div className="mt-2 text-sm text-gray-500">{t('proxyModal.noValidProxy')}</div>
               )}
             </div>
 
             <DialogFooter>
               <Button variant="outline" onClick={() => onOpenChange(false)}>
-                Отмена
+                {t('common.cancel')}
               </Button>
               <Button onClick={handleQuickSubmit} disabled={isLoading}>
-                {isLoading ? '🌍 Определение страны...' : 'Добавить прокси'}
+                {isLoading ? t('proxyModal.detectingCountry') : t('proxyModal.addProxy')}
               </Button>
             </DialogFooter>
           </TabsContent>
 
           <TabsContent value="bulk" className="space-y-4">
             <div>
-              <Label htmlFor="proxyList">Список прокси (по одному на строку)</Label>
+              <Label htmlFor="proxyList">{t('proxyModal.proxyList')}</Label>
               <Textarea
                 id="proxyList"
                 value={proxyText}
                 onChange={(e) => setProxyText(e.target.value)}
-                placeholder="Вставьте список прокси в любом формате&#10;socks5://user:pass@127.0.0.1:1080&#10;http://192.168.1.1:8080&#10;proxy.example.com:3128&#10;192.168.1.1:8080:admin:password"
+                placeholder={t('proxyModal.proxyListPlaceholder')}
                 rows={12}
                 className="font-mono text-sm"
               />
             </div>
 
             <div className="text-sm text-gray-600 space-y-1">
-              <p className="font-semibold">Поддерживаемые форматы:</p>
+              <p className="font-semibold">{t('proxyModal.supportedFormatsLabel')}</p>
               <ul className="list-disc list-inside space-y-1">
                 <li>protocol://username:password@host:port</li>
                 <li>username:password@host:port</li>
@@ -368,15 +370,15 @@ const ProxyModal = ({ open, onOpenChange, onAdd }: ProxyModalProps) => {
                 <li>protocol://host:port</li>
                 <li>host:port</li>
               </ul>
-              <p className="mt-2">Поддерживаемые протоколы: http, https, socks4, socks5</p>
+              <p className="mt-2">{t('proxyModal.supportedProtocols')} http, https, socks4, socks5</p>
             </div>
 
             <DialogFooter>
               <Button variant="outline" onClick={() => onOpenChange(false)}>
-                Отмена
+                {t('common.cancel')}
               </Button>
               <Button onClick={handleBulkSubmit} disabled={isLoading}>
-                {isLoading ? '🌍 Определение стран...' : 'Добавить все прокси'}
+                {isLoading ? t('proxyModal.detectingCountries') : t('proxyModal.addAllProxies')}
               </Button>
             </DialogFooter>
           </TabsContent>
@@ -384,7 +386,7 @@ const ProxyModal = ({ open, onOpenChange, onAdd }: ProxyModalProps) => {
           <TabsContent value="manual" className="space-y-4">
             <div className="grid grid-cols-3 gap-4">
               <div>
-                <Label htmlFor="manualType">Тип протокола</Label>
+                <Label htmlFor="manualType">{t('proxyModal.protocolType')}</Label>
                 <Select value={manualType} onValueChange={(v) => setManualType(v as Proxy['type'])}>
                   <SelectTrigger>
                     <SelectValue />
@@ -398,7 +400,7 @@ const ProxyModal = ({ open, onOpenChange, onAdd }: ProxyModalProps) => {
                 </Select>
               </div>
               <div>
-                <Label htmlFor="manualHost">Хост / IP адрес *</Label>
+                <Label htmlFor="manualHost">{t('proxyModal.hostIP')}</Label>
                 <Input
                   id="manualHost"
                   value={manualHost}
@@ -407,7 +409,7 @@ const ProxyModal = ({ open, onOpenChange, onAdd }: ProxyModalProps) => {
                 />
               </div>
               <div>
-                <Label htmlFor="manualPort">Порт *</Label>
+                <Label htmlFor="manualPort">{t('proxyModal.port')}</Label>
                 <Input
                   id="manualPort"
                   value={manualPort}
@@ -419,7 +421,7 @@ const ProxyModal = ({ open, onOpenChange, onAdd }: ProxyModalProps) => {
 
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <Label htmlFor="manualUsername">Логин (опционально)</Label>
+                <Label htmlFor="manualUsername">{t('proxyModal.loginOptional')}</Label>
                 <Input
                   id="manualUsername"
                   value={manualUsername}
@@ -428,7 +430,7 @@ const ProxyModal = ({ open, onOpenChange, onAdd }: ProxyModalProps) => {
                 />
               </div>
               <div>
-                <Label htmlFor="manualPassword">Пароль (опционально)</Label>
+                <Label htmlFor="manualPassword">{t('proxyModal.passwordOptional')}</Label>
                 <Input
                   id="manualPassword"
                   type="password"
@@ -440,15 +442,15 @@ const ProxyModal = ({ open, onOpenChange, onAdd }: ProxyModalProps) => {
             </div>
 
             <div className="bg-gray-50 p-4 rounded-lg text-sm text-gray-600">
-              <p>Заполните обязательные поля (отмечены *). Логин и пароль нужны только если прокси требует авторизацию.</p>
+              <p>{t('proxyModal.manualHint')}</p>
             </div>
 
             <DialogFooter>
               <Button variant="outline" onClick={() => onOpenChange(false)}>
-                Отмена
+                {t('common.cancel')}
               </Button>
               <Button onClick={handleManualSubmit} disabled={isLoading}>
-                {isLoading ? '🌍 Определение страны...' : 'Добавить прокси'}
+                {isLoading ? t('proxyModal.detectingCountry') : t('proxyModal.addProxy')}
               </Button>
             </DialogFooter>
           </TabsContent>

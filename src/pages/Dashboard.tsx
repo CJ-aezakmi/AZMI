@@ -1,5 +1,8 @@
 import { useState, useEffect } from 'react';
 import { Plus, Search, Play, Edit, Copy, Trash2, Globe, Folder, Puzzle, BarChart3, Settings, Download, Upload, RefreshCw, Cookie, Smartphone, Monitor } from 'lucide-react';
+import { useTranslation } from '@/lib/i18n';
+import { ru } from '@/locales/ru';
+import { en } from '@/locales/en';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -20,6 +23,7 @@ import { getSXOrgApiKey, SXOrgClient } from '@/lib/sxorg-api';
 import sxorgLogo from '@/assets/sxorg-logo.svg';
 
 const Dashboard = () => {
+  const { t, locale, setLocale } = useTranslation();
   const [activeView, setActiveView] = useState('profiles');
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [proxies, setProxies] = useState<Proxy[]>([]);
@@ -29,7 +33,7 @@ const Dashboard = () => {
   const [isProxyModalOpen, setIsProxyModalOpen] = useState(false);
   const [isSXOrgModalOpen, setIsSXOrgModalOpen] = useState(false);
   const [editingProfile, setEditingProfile] = useState<Profile | null>(null);
-  const [folders, setFolders] = useState<string[]>(['Работа', 'Личное', 'Тестовые']);
+  const [folders, setFolders] = useState<string[]>([]);
   const [selectedFolder, setSelectedFolder] = useState<string | null>(null);
   const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null);
   const [showUpdateDialog, setShowUpdateDialog] = useState(false);
@@ -72,6 +76,12 @@ const Dashboard = () => {
     }
     if (savedFolders) {
       setFolders(JSON.parse(savedFolders));
+    } else {
+      // Default folders based on locale
+      const defaultFolders = locale === 'en'
+        ? ['Work', 'Personal', 'Testing']
+        : ['Работа', 'Личное', 'Тестовые'];
+      setFolders(defaultFolders);
     }
 
     // Проверяем установлен ли Camoufox
@@ -105,39 +115,7 @@ const Dashboard = () => {
   }, []);
 
   // Ротация прикольных фраз при скачивании
-  const funPhrases = [
-    { emoji: '🕵️', text: 'Скрываем вашу личность...' },
-    { emoji: '🔐', text: 'Шифруем отпечатки браузера...' },
-    { emoji: '🛡️', text: 'Настраиваем антидетект ядро...' },
-    { emoji: '🚀', text: 'Готовимся к взлому пентагона...' },
-    { emoji: '🧬', text: 'Генерируем уникальную ДНК браузера...' },
-    { emoji: '🌍', text: 'Меняем геолокацию на Багамы...' },
-    { emoji: '👻', text: 'Становимся невидимыми...' },
-    { emoji: '🎭', text: 'Надеваем маску анонимности...' },
-    { emoji: '🦊', text: 'Лиса маскируется в толпе...' },
-    { emoji: '💻', text: 'Обходим системы обнаружения...' },
-    { emoji: '🕶️', text: 'Включаем режим инкогнито v2.0...' },
-    { emoji: '🧪', text: 'Смешиваем фингерпринты...' },
-    { emoji: '📡', text: 'Подключаемся к секретному каналу...' },
-    { emoji: '🔧', text: 'Тюнингуем WebGL и Canvas...' },
-    { emoji: '🎯', text: 'Калибруем аудио-отпечатки...' },
-    { emoji: '🌐', text: 'Подменяем WebRTC leak...' },
-    { emoji: '🤖', text: 'Обучаем ИИ маскировки...' },
-    { emoji: '💎', text: 'Полируем идеальный фингерпринт...' },
-    // GTA San Andreas vibes
-    { emoji: '🚗', text: 'All you had to do was follow the damn train, CJ!' },
-    { emoji: '🏠', text: 'Grove Street. Home...' },
-    { emoji: '💪', text: 'Respect+' },
-    { emoji: '🎮', text: 'Ah shit, here we go again...' },
-    { emoji: '🔫', text: 'I\'ll have two number 9s...' },
-    { emoji: '🏍️', text: 'San Andreas загружается...' },
-    { emoji: '⭐', text: 'Wasted... шутка, всё идёт по плану' },
-    { emoji: '🗺️', text: 'Territory captured! +1 антидетект' },
-    { emoji: '💰', text: 'Mission Passed! $$$' },
-    { emoji: '🚁', text: 'Чит-код на бессмертие активирован' },
-    { emoji: '🎲', text: 'You picked the wrong house, fool!' },
-    { emoji: '🏎️', text: 'GTA San Andreas Loading Screen...' },
-  ];
+  const funPhrases = locale === 'en' ? en.funPhrases : ru.funPhrases;
 
   useEffect(() => {
     if (!camoufoxDownloading) return;
@@ -187,7 +165,7 @@ const Dashboard = () => {
         localStorage.setItem('aezakmi_profiles', JSON.stringify(updatedProfiles));
         return updatedProfiles;
       });
-      toast.success(`Профиль "${profileData.name}" обновлен!`);
+      toast.success(t('profiles.updated', { name: profileData.name }));
     } else {
       // Создание
       const newProfile: Profile = {
@@ -201,7 +179,7 @@ const Dashboard = () => {
         localStorage.setItem('aezakmi_profiles', JSON.stringify(updated));
         return updated;
       });
-      toast.success(`Профиль "${profileData.name}" создан!`);
+      toast.success(t('profiles.created', { name: profileData.name }));
     }
     setIsProfileModalOpen(false);
     setEditingProfile(null);
@@ -211,12 +189,12 @@ const Dashboard = () => {
   const handleDownloadCamoufox = async () => {
     if (camoufoxDownloading) return;
     setCamoufoxDownloading(true);
-    setCamoufoxProgress({ stage: 'download', percent: 0, message: 'Начинаем скачивание...' });
+    setCamoufoxProgress({ stage: 'download', percent: 0, message: t('profiles.downloading') });
     try {
       const { invoke } = await import('@tauri-apps/api/core');
       await invoke('download_camoufox');
     } catch (err: any) {
-      toast.error('Ошибка установки компонентов', { description: err?.message || String(err) });
+      toast.error(t('camoufox.installError'), { description: err?.message || String(err) });
       setCamoufoxDownloading(false);
     }
   };
@@ -228,16 +206,16 @@ const Dashboard = () => {
 
     // Проверяем Camoufox
     if (!camoufoxInstalled) {
-      toast.info('Устанавливаем необходимые компоненты (~530 MB)...', {
-        description: 'После установки профиль запустится автоматически'
+      toast.info(t('camoufox.installingToast'), {
+        description: t('camoufox.installingDescription')
       });
       await handleDownloadCamoufox();
       // После скачивания запускаем профиль
-      toast.info(`Запуск профиля "${profile.name}"...`);
+      toast.info(t('profiles.launchingProfile', { name: profile.name }));
     }
 
-    toast.info(`Запуск профиля "${profile.name}"...`, {
-      description: '🦊 Антидетект-браузер запускается...'
+    toast.info(t('profiles.launchingProfile', { name: profile.name }), {
+      description: t('profiles.launchingDescription')
     });
 
     try {
@@ -248,12 +226,12 @@ const Dashboard = () => {
       );
       saveProfiles(updatedProfiles);
 
-      toast.success(`Профиль "${profile.name}" активен!`, {
-        description: '🦊 Camoufox браузер запущен'
+      toast.success(t('profiles.profileActive', { name: profile.name }), {
+        description: t('profiles.profileActiveDescription')
       });
     } catch (err: any) {
       console.error('launchProfile error', err);
-      toast.error(`Не удалось запустить профиль`, {
+      toast.error(t('profiles.launchFailed'), {
         description: err?.message || String(err)
       });
     }
@@ -275,12 +253,12 @@ const Dashboard = () => {
       const clonedProfile: Profile = {
         ...profile,
         id: Date.now().toString(),
-        name: `${profile.name} (копия)`,
+        name: `${profile.name} (${t('profiles.copy')})`,
         createdAt: new Date().toISOString(),
         status: 'inactive'
       };
       saveProfiles([...profiles, clonedProfile]);
-      toast.success(`Профиль "${profile.name}" клонирован!`);
+      toast.success(t('profiles.cloned', { name: profile.name }));
     }
   };
 
@@ -288,13 +266,13 @@ const Dashboard = () => {
   const handleDeleteProfile = async (profileId: string) => {
     const profile = profiles.find(p => p.id === profileId);
     if (profile) {
-      const confirmed = await safeConfirm(`Удалить профиль "${profile.name}"?`);
+      const confirmed = await safeConfirm(t('profiles.confirmDelete', { name: profile.name }));
 
       if (confirmed) {
         saveProfiles(profiles.filter(p => p.id !== profileId));
         selectedProfiles.delete(profileId);
         setSelectedProfiles(new Set(selectedProfiles));
-        toast.success(`Профиль "${profile.name}" удален!`);
+        toast.success(t('profiles.deleted', { name: profile.name }));
       }
     }
   };
@@ -322,17 +300,17 @@ const Dashboard = () => {
   // Запуск выбранных
   const handleLaunchSelected = () => {
     selectedProfiles.forEach(id => handleLaunchProfile(id));
-    toast.success(`Запущено профилей: ${selectedProfiles.size}`);
+    toast.success(t('profiles.launchedCount', { count: selectedProfiles.size }));
   };
 
   // Удаление выбранных
   const handleDeleteSelected = async () => {
-    const confirmed = await safeConfirm(`Удалить ${selectedProfiles.size} профилей?`);
+    const confirmed = await safeConfirm(t('profiles.confirmDeleteMultiple', { count: selectedProfiles.size }));
 
     if (confirmed) {
       saveProfiles(profiles.filter(p => !selectedProfiles.has(p.id)));
       setSelectedProfiles(new Set());
-      toast.success(`Удалено профилей: ${selectedProfiles.size}`);
+      toast.success(t('profiles.deletedCount', { count: selectedProfiles.size }));
     }
   };
 
@@ -346,7 +324,7 @@ const Dashboard = () => {
     link.download = `aezakmi_profiles_${new Date().toISOString().split('T')[0]}.json`;
     link.click();
     URL.revokeObjectURL(url);
-    toast.success('Профили экспортированы!');
+    toast.success(t('profiles.exportSuccess'));
   };
 
   // Импорт профилей
@@ -363,12 +341,12 @@ const Dashboard = () => {
             const importedProfiles = JSON.parse(event.target?.result as string);
             if (Array.isArray(importedProfiles)) {
               saveProfiles([...profiles, ...importedProfiles]);
-              toast.success(`Импортировано профилей: ${importedProfiles.length}`);
+              toast.success(t('profiles.importedCount', { count: importedProfiles.length }));
             } else {
-              toast.error('Неверный формат файла');
+              toast.error(t('profiles.invalidFormat'));
             }
           } catch {
-            toast.error('Ошибка чтения файла');
+            toast.error(t('profiles.readError'));
           }
         };
         reader.readAsText(file);
@@ -386,25 +364,25 @@ const Dashboard = () => {
       login: p.login || p.username || undefined,
     }));
     saveProxies([...proxies, ...normalized]);
-    toast.success(`Добавлено прокси: ${newProxies.length}`);
+    toast.success(t('proxies.addedCount', { count: newProxies.length }));
     setIsProxyModalOpen(false);
   };
 
   // Удаление прокси
   const handleDeleteProxy = async (index: number) => {
     const proxy = proxies[index];
-    const confirmed = await safeConfirm(`Удалить прокси ${proxy.host}:${proxy.port}?`);
+    const confirmed = await safeConfirm(t('proxies.confirmDelete', { host: proxy.host, port: proxy.port }));
 
     if (confirmed) {
       saveProxies(proxies.filter((_, i) => i !== index));
-      toast.success('Прокси удален!');
+      toast.success(t('proxies.deleted'));
     }
   };
 
   // Тест прокси
   const handleTestProxy = async (index: number) => {
     const proxy = proxies[index];
-    toast.info(`Проверка прокси ${proxy.host}:${proxy.port}...`);
+    toast.info(t('proxies.testing', { host: proxy.host, port: proxy.port }));
 
     // Симуляция проверки
     setTimeout(() => {
@@ -414,9 +392,9 @@ const Dashboard = () => {
       saveProxies(updatedProxies);
 
       if (isWorking) {
-        toast.success(`Прокси ${proxy.host}:${proxy.port} работает!`);
+        toast.success(t('proxies.testWorking', { host: proxy.host, port: proxy.port }));
       } else {
-        toast.error(`Прокси ${proxy.host}:${proxy.port} не отвечает`);
+        toast.error(t('proxies.testFailed', { host: proxy.host, port: proxy.port }));
       }
     }, 1500);
   };
@@ -427,26 +405,26 @@ const Dashboard = () => {
 
     // Проверяем есть ли refresh_link в metadata
     if (!proxy.metadata?.refresh_link) {
-      toast.error('Этот прокси не поддерживает обновление IP');
+      toast.error(t('proxies.noRefreshSupport'));
       return;
     }
 
     setRefreshingProxyIndex(index);
-    toast.info('Обновление IP адреса...');
+    toast.info(t('proxies.refreshingIP'));
 
     try {
       const apiKey = getSXOrgApiKey();
       if (!apiKey) {
-        toast.error('API ключ SX.ORG не найден');
+        toast.error(t('proxies.apiKeyNotFound'));
         return;
       }
 
       const client = new SXOrgClient(apiKey);
       await client.refreshProxyIP(proxy.metadata.refresh_link);
-      toast.success('IP адрес успешно обновлен!');
+      toast.success(t('proxies.refreshSuccess'));
     } catch (error: any) {
       console.error('Refresh proxy error:', error);
-      toast.error(error.message || 'Ошибка обновления IP');
+      toast.error(error.message || t('proxies.refreshError'));
     } finally {
       setRefreshingProxyIndex(null);
     }
@@ -454,22 +432,22 @@ const Dashboard = () => {
 
   // Добавление папки
   const handleAddFolder = async () => {
-    const folderName = await safePrompt('Введите название папки:');
+    const folderName = await safePrompt(t('folders.promptName'));
 
     if (folderName && typeof folderName === 'string' && folderName.trim()) {
       saveFolders([...folders, folderName.trim()]);
-      toast.success(`Папка "${folderName}" создана!`);
+      toast.success(t('folders.created', { name: folderName }));
     }
   };
 
   // Удаление папки
   const handleDeleteFolder = async (index: number) => {
     const folder = folders[index];
-    const confirmed = await safeConfirm(`Удалить папку "${folder}"?`);
+    const confirmed = await safeConfirm(t('folders.confirmDelete', { name: folder }));
 
     if (confirmed) {
       saveFolders(folders.filter((_, i) => i !== index));
-      toast.success(`Папка "${folder}" удалена!`);
+      toast.success(t('folders.deleted', { name: folder }));
     }
   };
 
@@ -480,13 +458,13 @@ const Dashboard = () => {
 
   // Проверка обновлений
   const handleCheckForUpdates = async () => {
-    toast.info('Проверка обновлений...');
+    toast.info(t('updater.checkingUpdates'));
 
     try {
       const update = await checkForUpdates();
 
       if (!update) {
-        toast.error('Не удалось проверить обновления');
+        toast.error(t('updater.updateCheckFailed'));
         return;
       }
 
@@ -495,11 +473,11 @@ const Dashboard = () => {
         setShowUpdateDialog(true);
         setLastUpdateCheck();
       } else {
-        toast.success('У вас установлена последняя версия!');
+        toast.success(t('updater.latestVersion'));
       }
     } catch (error) {
       console.error('Error checking updates:', error);
-      toast.error('Ошибка при проверке обновлений');
+      toast.error(t('updater.updateCheckError'));
     }
   };
 
@@ -508,18 +486,18 @@ const Dashboard = () => {
     if (!updateInfo) return;
 
     try {
-      toast.info('Скачивание обновления...');
+      toast.info(t('updater.downloadingUpdate'));
 
       const installerPath = await downloadUpdate(updateInfo.downloadUrl);
 
-      toast.success('Запуск установщика...');
+      toast.success(t('updater.launchingInstaller'));
 
       await installUpdate(installerPath);
 
       // После вызова installUpdate приложение закроется
     } catch (error: any) {
       console.error('Error installing update:', error);
-      toast.error(`Ошибка установки: ${error.message}`);
+      toast.error(t('updater.installError', { message: error.message }));
     }
   };
 
@@ -552,11 +530,11 @@ const Dashboard = () => {
   };
 
   const navItems = [
-    { id: 'profiles', label: 'Все профили', icon: Play, count: profiles.length },
-    { id: 'folders', label: 'Папки', icon: Folder, count: folders.length },
-    { id: 'proxies', label: 'Прокси', icon: Globe, count: proxies.length },
-    { id: 'statistics', label: 'Статистика', icon: BarChart3 },
-    { id: 'settings', label: 'Настройки', icon: Settings },
+    { id: 'profiles', label: t('nav.allProfiles'), icon: Play, count: profiles.length },
+    { id: 'folders', label: t('nav.folders'), icon: Folder, count: folders.length },
+    { id: 'proxies', label: t('nav.proxies'), icon: Globe, count: proxies.length },
+    { id: 'statistics', label: t('nav.statistics'), icon: BarChart3 },
+    { id: 'settings', label: t('nav.settings'), icon: Settings },
   ];
 
   return (
@@ -568,8 +546,8 @@ const Dashboard = () => {
             {/* Animated fox */}
             <div className="text-center mb-6">
               <div className="text-6xl mb-2 animate-bounce" style={{ animationDuration: '2s' }}>🦊</div>
-              <h2 className="text-xl font-bold text-white">Установка необходимых компонентов</h2>
-              <p className="text-sm text-gray-400 mt-1">Подождите, идёт настройка...</p>
+              <h2 className="text-xl font-bold text-white">{t('camoufox.installTitle')}</h2>
+              <p className="text-sm text-gray-400 mt-1">{t('camoufox.installSubtitle')}</p>
             </div>
 
             {/* Fun rotating phrase */}
@@ -588,7 +566,7 @@ const Dashboard = () => {
             <div className="mb-4">
               <div className="flex justify-between text-sm mb-2">
                 <span className="text-gray-400">
-                  {camoufoxProgress.stage === 'download' ? '📥 Скачивание' : camoufoxProgress.stage === 'extract' ? '📦 Распаковка' : '✅ Готово'}
+                  {camoufoxProgress.stage === 'download' ? t('camoufox.stageDownload') : camoufoxProgress.stage === 'extract' ? t('camoufox.stageExtract') : t('camoufox.stageDone')}
                 </span>
                 <span className="font-mono text-orange-400 font-bold">{camoufoxProgress.percent}%</span>
               </div>
@@ -618,7 +596,7 @@ const Dashboard = () => {
 
             {/* Bottom info */}
             <div className="text-center">
-              <p className="text-xs text-gray-600">Не закрывайте приложение</p>
+              <p className="text-xs text-gray-600">{t('common.doNotCloseApp')}</p>
             </div>
           </div>
 
@@ -643,9 +621,9 @@ const Dashboard = () => {
       {/* Camoufox not installed banner */}
       {camoufoxInstalled === false && !camoufoxDownloading && (
         <div className="fixed top-0 left-0 right-0 z-[90] bg-orange-500 text-white py-2 px-4 flex items-center justify-center gap-3">
-          <span className="text-sm font-medium">🦊 Необходимые компоненты не установлены</span>
+          <span className="text-sm font-medium">{t('camoufox.notInstalledBanner')}</span>
           <Button size="sm" variant="secondary" onClick={handleDownloadCamoufox} className="h-7 text-xs">
-            <Download className="w-3 h-3 mr-1" /> Установить (~530 MB)
+            <Download className="w-3 h-3 mr-1" /> {t('camoufox.installButton')}
           </Button>
         </div>
       )}
@@ -698,7 +676,7 @@ const Dashboard = () => {
             className="w-full"
           >
             <Plus className="w-4 h-4 mr-2" />
-            Создать профиль
+            {t('nav.createProfile')}
           </Button>
         </div>
       </aside>
@@ -708,12 +686,12 @@ const Dashboard = () => {
         {activeView === 'profiles' && (
           <div className="p-8">
             <div className="mb-6">
-              <h2 className="text-2xl font-bold mb-4">Управление профилями</h2>
+              <h2 className="text-2xl font-bold mb-4">{t('profiles.title')}</h2>
               <div className="flex gap-4 items-center mb-4">
                 <div className="flex-1 relative">
                   <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
                   <Input
-                    placeholder="Поиск профилей..."
+                    placeholder={t('profiles.searchPlaceholder')}
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
                     className="pl-10 bg-white"
@@ -721,34 +699,34 @@ const Dashboard = () => {
                 </div>
                 <div className="flex gap-2 items-center">
                   <span className="text-sm text-gray-600">
-                    Выбрано: {selectedProfiles.size}
+                    {t('common.selected')}: {selectedProfiles.size}
                   </span>
                   <Button variant="outline" onClick={toggleSelectAll}>
-                    {selectedProfiles.size === filteredProfiles.length ? 'Снять выбор' : 'Выбрать все'}
+                    {selectedProfiles.size === filteredProfiles.length ? t('common.deselectAll') : t('common.selectAll')}
                   </Button>
                   <Button
                     onClick={handleLaunchSelected}
                     disabled={selectedProfiles.size === 0}
                   >
-                    Запустить
+                    {t('profiles.launch')}
                   </Button>
                   <Button
                     variant="destructive"
                     onClick={handleDeleteSelected}
                     disabled={selectedProfiles.size === 0}
                   >
-                    Удалить
+                    {t('common.delete')}
                   </Button>
                 </div>
               </div>
               <div className="flex gap-2">
                 <Button variant="outline" onClick={handleImportProfiles}>
                   <Upload className="w-4 h-4 mr-2" />
-                  Импорт
+                  {t('common.import')}
                 </Button>
                 <Button variant="outline" onClick={handleExportProfiles} disabled={profiles.length === 0}>
                   <Download className="w-4 h-4 mr-2" />
-                  Экспорт
+                  {t('common.export')}
                 </Button>
               </div>
             </div>
@@ -756,11 +734,11 @@ const Dashboard = () => {
             {filteredProfiles.length === 0 ? (
               <Card className="text-center py-12 bg-white/95 backdrop-blur-sm">
                 <CardContent>
-                  <h3 className="text-xl font-semibold mb-2">Нет профилей</h3>
-                  <p className="text-gray-600 mb-4">Создайте свой первый профиль для начала работы</p>
+                  <h3 className="text-xl font-semibold mb-2">{t('profiles.noProfiles')}</h3>
+                  <p className="text-gray-600 mb-4">{t('profiles.noProfilesHint')}</p>
                   <Button onClick={() => setIsProfileModalOpen(true)}>
                     <Plus className="w-4 h-4 mr-2" />
-                    Создать профиль
+                    {t('nav.createProfile')}
                   </Button>
                 </CardContent>
               </Card>
@@ -778,7 +756,7 @@ const Dashboard = () => {
                           <CardTitle className="text-lg">{profile.name}</CardTitle>
                         </div>
                         <Badge variant={profile.status === 'active' ? 'default' : 'secondary'}>
-                          {profile.status === 'active' ? 'Активен' : 'Неактивен'}
+                          {profile.status === 'active' ? t('profiles.active') : t('profiles.inactive')}
                         </Badge>
                       </div>
                     </CardHeader>
@@ -789,25 +767,25 @@ const Dashboard = () => {
                           <span className="font-medium">{profile.userAgent}</span>
                         </div>
                         <div className="flex justify-between">
-                          <span className="text-gray-600">Разрешение:</span>
+                          <span className="text-gray-600">{t('profiles.resolution')}:</span>
                           <span className="font-medium">{profile.screenWidth}x{profile.screenHeight}</span>
                         </div>
                         <div className="flex justify-between">
-                          <span className="text-gray-600">Движок:</span>
+                          <span className="text-gray-600">{t('profiles.engine')}:</span>
                           <span className="font-medium capitalize">{profile.browserEngine || defaultEngine}</span>
                         </div>
                         <div className="flex justify-between">
-                          <span className="text-gray-600">Устройство:</span>
+                          <span className="text-gray-600">{t('profiles.device')}:</span>
                           <span className="font-medium flex items-center gap-1">
                             {profile.mobileEmulation?.enabled
-                              ? <><Smartphone className="w-3 h-3" /> {profile.mobileEmulation.deviceName || 'Мобильное'}</>
-                              : <><Monitor className="w-3 h-3" /> Десктоп</>}
+                              ? <><Smartphone className="w-3 h-3" /> {profile.mobileEmulation.deviceName || t('profiles.mobile')}</>
+                              : <><Monitor className="w-3 h-3" /> {t('profiles.desktop')}</>}
                           </span>
                         </div>
                         <div className="flex justify-between">
-                          <span className="text-gray-600">Прокси:</span>
+                          <span className="text-gray-600">{t('profiles.proxy')}:</span>
                           <span className="font-medium">
-                            {profile.proxy?.enabled ? `${profile.proxy.host}:${profile.proxy.port}` : 'Нет'}
+                            {profile.proxy?.enabled ? `${profile.proxy.host}:${profile.proxy.port}` : t('common.none')}
                           </span>
                         </div>
                         {profile.cookies && profile.cookies.length > 0 && (
@@ -825,7 +803,7 @@ const Dashboard = () => {
                           disabled={camoufoxDownloading}
                         >
                           <Play className="w-4 h-4 mr-1" />
-                          {camoufoxDownloading ? 'Скачивание...' : '🦊 Запустить'}
+                          {camoufoxDownloading ? t('profiles.downloading') : t('profiles.launchFox')}
                         </Button>
                         <div className="flex gap-2">
                           <Button
@@ -844,7 +822,7 @@ const Dashboard = () => {
                             size="sm"
                             variant="outline"
                             className="flex-1"
-                            title="Импорт Cookies"
+                            title={t('profileModal.importCookies')}
                           onClick={() => {
                             const input = document.createElement('input');
                             input.type = 'file';
@@ -897,12 +875,12 @@ const Dashboard = () => {
                                         p.id === profile.id ? { ...p, cookies, updatedAt: new Date().toISOString() } : p
                                       );
                                       saveProfiles(updatedProfiles);
-                                      toast.success(`Загружено ${cookies.length} cookies для "${profile.name}"`);
+                                      toast.success(t('profileModal.cookiesImportedForProfile', { count: cookies.length, name: profile.name }));
                                     } else {
-                                      toast.error('Не удалось распознать cookies в файле');
+                                      toast.error(t('profileModal.cookiesRecognizeFailedFile'));
                                     }
                                   } catch {
-                                    toast.error('Ошибка чтения файла cookies');
+                                    toast.error(t('profileModal.cookiesReadError'));
                                   }
                                 };
                                 reader.readAsText(file);
@@ -942,10 +920,10 @@ const Dashboard = () => {
         {activeView === 'folders' && (
           <div className="p-8">
             <div className="mb-6 flex justify-between items-center">
-              <h2 className="text-2xl font-bold">Организация по папкам</h2>
+              <h2 className="text-2xl font-bold">{t('folders.title')}</h2>
               <Button onClick={handleAddFolder}>
                 <Plus className="w-4 h-4 mr-2" />
-                Создать папку
+                {t('folders.createFolder')}
               </Button>
             </div>
 
@@ -962,9 +940,9 @@ const Dashboard = () => {
                   <div className="flex items-center gap-3">
                     <Folder className="w-8 h-8 text-gray-600" />
                     <div>
-                      <h3 className="font-semibold text-lg">Все профили</h3>
+                      <h3 className="font-semibold text-lg">{t('folders.allProfiles')}</h3>
                       <p className="text-sm text-gray-600">
-                        {profiles.length} профилей
+                        {t('folders.profilesCount', { count: profiles.length })}
                       </p>
                     </div>
                   </div>
@@ -983,9 +961,9 @@ const Dashboard = () => {
                   <div className="flex items-center gap-3">
                     <Folder className="w-8 h-8 text-orange-600" />
                     <div>
-                      <h3 className="font-semibold text-lg">Без папки</h3>
+                      <h3 className="font-semibold text-lg">{t('folders.noFolder')}</h3>
                       <p className="text-sm text-gray-600">
-                        {profiles.filter(p => !p.folder).length} профилей
+                        {t('folders.profilesCount', { count: profiles.filter(p => !p.folder).length })}
                       </p>
                     </div>
                   </div>
@@ -1010,7 +988,7 @@ const Dashboard = () => {
                         <div>
                           <h3 className="font-semibold text-lg">{folder}</h3>
                           <p className="text-sm text-gray-600">
-                            {folderProfiles.length} профилей
+                            {t('folders.profilesCount', { count: folderProfiles.length })}
                           </p>
                         </div>
                       </div>
@@ -1035,7 +1013,7 @@ const Dashboard = () => {
         {activeView === 'proxies' && (
           <div className="p-8">
             <div className="mb-6 flex justify-between items-center">
-              <h2 className="text-2xl font-bold">Управление прокси</h2>
+              <h2 className="text-2xl font-bold">{t('proxies.title')}</h2>
               <div className="flex gap-2">
                 <Button
                   onClick={() => setIsSXOrgModalOpen(true)}
@@ -1046,7 +1024,7 @@ const Dashboard = () => {
                 </Button>
                 <Button onClick={() => setIsProxyModalOpen(true)}>
                   <Plus className="w-4 h-4 mr-2" />
-                  Добавить прокси
+                  {t('proxies.addProxy')}
                 </Button>
               </div>
             </div>
@@ -1054,11 +1032,11 @@ const Dashboard = () => {
             {proxies.length === 0 ? (
               <Card className="text-center py-12 bg-white/95 backdrop-blur-sm">
                 <CardContent>
-                  <h3 className="text-xl font-semibold mb-2">Нет прокси</h3>
-                  <p className="text-gray-600 mb-4">Добавьте прокси для использования в профилях</p>
+                  <h3 className="text-xl font-semibold mb-2">{t('proxies.noProxies')}</h3>
+                  <p className="text-gray-600 mb-4">{t('proxies.noProxiesHint')}</p>
                   <Button onClick={() => setIsProxyModalOpen(true)}>
                     <Plus className="w-4 h-4 mr-2" />
-                    Добавить прокси
+                    {t('proxies.addProxy')}
                   </Button>
                 </CardContent>
               </Card>
@@ -1098,12 +1076,12 @@ const Dashboard = () => {
                           {proxy.name || `${proxy.type.toUpperCase()}://${proxy.host}:${proxy.port}`}
                         </div>
                         <div className="text-sm text-gray-600">
-                          {proxy.username ? `${proxy.username}:***` : 'Без авторизации'}
+                          {proxy.username ? `${proxy.username}:***` : t('common.noAuth')}
                         </div>
                       </div>
                       <div className="flex items-center gap-2">
                         <Badge variant={proxy.status === 'working' ? 'default' : proxy.status === 'failed' ? 'destructive' : 'secondary'}>
-                          {proxy.status === 'working' ? '✅ Работает' : proxy.status === 'failed' ? '❌ Не работает' : '❓ Не проверен'}
+                          {proxy.status === 'working' ? t('proxies.working') : proxy.status === 'failed' ? t('proxies.failed') : t('proxies.unchecked')}
                         </Badge>
                         {proxy.metadata?.refresh_link && (
                           <Button
@@ -1111,7 +1089,7 @@ const Dashboard = () => {
                             variant="outline"
                             onClick={() => handleRefreshProxyIP(index)}
                             disabled={refreshingProxyIndex === index}
-                            title="Обновить IP адрес"
+                            title={t('proxies.refreshIP')}
                           >
                             {refreshingProxyIndex === index ? (
                               <RefreshCw className="w-4 h-4 animate-spin" />
@@ -1125,7 +1103,7 @@ const Dashboard = () => {
                           variant="outline"
                           onClick={() => handleTestProxy(index)}
                         >
-                          Проверить
+                          {t('proxies.test')}
                         </Button>
                         <Button
                           size="sm"
@@ -1145,11 +1123,11 @@ const Dashboard = () => {
 
         {activeView === 'statistics' && (
           <div className="p-8">
-            <h2 className="text-2xl font-bold mb-6">Статистика использования</h2>
+            <h2 className="text-2xl font-bold mb-6">{t('statistics.title')}</h2>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
               <Card className="bg-white/95 backdrop-blur-sm">
                 <CardHeader>
-                  <CardTitle className="text-sm text-gray-600">Всего профилей</CardTitle>
+                  <CardTitle className="text-sm text-gray-600">{t('statistics.totalProfiles')}</CardTitle>
                 </CardHeader>
                 <CardContent>
                   <p className="text-3xl font-bold text-blue-600">{stats.totalProfiles}</p>
@@ -1157,7 +1135,7 @@ const Dashboard = () => {
               </Card>
               <Card className="bg-white/95 backdrop-blur-sm">
                 <CardHeader>
-                  <CardTitle className="text-sm text-gray-600">Активных профилей</CardTitle>
+                  <CardTitle className="text-sm text-gray-600">{t('statistics.activeProfiles')}</CardTitle>
                 </CardHeader>
                 <CardContent>
                   <p className="text-3xl font-bold text-green-600">{stats.activeProfiles}</p>
@@ -1165,7 +1143,7 @@ const Dashboard = () => {
               </Card>
               <Card className="bg-white/95 backdrop-blur-sm">
                 <CardHeader>
-                  <CardTitle className="text-sm text-gray-600">Всего прокси</CardTitle>
+                  <CardTitle className="text-sm text-gray-600">{t('statistics.totalProxies')}</CardTitle>
                 </CardHeader>
                 <CardContent>
                   <p className="text-3xl font-bold text-purple-600">{stats.totalProxies}</p>
@@ -1173,7 +1151,7 @@ const Dashboard = () => {
               </Card>
               <Card className="bg-white/95 backdrop-blur-sm">
                 <CardHeader>
-                  <CardTitle className="text-sm text-gray-600">Рабочих прокси</CardTitle>
+                  <CardTitle className="text-sm text-gray-600">{t('statistics.workingProxies')}</CardTitle>
                 </CardHeader>
                 <CardContent>
                   <p className="text-3xl font-bold text-orange-600">{stats.workingProxies}</p>
@@ -1183,7 +1161,7 @@ const Dashboard = () => {
 
             <Card className="mt-6 bg-white/95 backdrop-blur-sm">
               <CardHeader>
-                <CardTitle>Последняя активность</CardTitle>
+                <CardTitle>{t('statistics.lastActivity')}</CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="space-y-3">
@@ -1192,11 +1170,11 @@ const Dashboard = () => {
                       <div>
                         <p className="font-medium">{profile.name}</p>
                         <p className="text-sm text-gray-600">
-                          Создан: {new Date(profile.createdAt).toLocaleDateString('ru-RU')}
+                          {t('profiles.created_')}: {new Date(profile.createdAt).toLocaleDateString(locale === 'en' ? 'en-US' : 'ru-RU')}
                         </p>
                       </div>
                       <Badge variant={profile.status === 'active' ? 'default' : 'secondary'}>
-                        {profile.status === 'active' ? 'Активен' : 'Неактивен'}
+                        {profile.status === 'active' ? t('profiles.active') : t('profiles.inactive')}
                       </Badge>
                     </div>
                   ))}
@@ -1208,31 +1186,49 @@ const Dashboard = () => {
 
         {activeView === 'settings' && (
           <div className="p-8">
-            <h2 className="text-2xl font-bold mb-6">Настройки приложения</h2>
+            <h2 className="text-2xl font-bold mb-6">{t('settings.title')}</h2>
             <div className="space-y-4 max-w-2xl">
               {/* Движок браузера по умолчанию */}
               <Card className="bg-white/95 backdrop-blur-sm">
                 <CardHeader>
-                  <CardTitle>Движок браузера</CardTitle>
+                  <CardTitle>{t('settings.browserEngine')}</CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                  <p className="text-sm text-gray-600 mb-3">Антидетект движок на основе Firefox с нативной защитой отпечатков</p>
+                  <p className="text-sm text-gray-600 mb-3">{t('settings.browserEngineDesc')}</p>
                   <div className="flex items-center gap-2 px-3 py-2 bg-green-50 border border-green-200 rounded-md text-sm">
-                    <span>🦊</span>
-                    <span className="text-green-700 font-medium">Camoufox — антидетект Firefox</span>
+                    <span className="text-green-700 font-medium">{t('settings.camoufoxLabel')}</span>
                   </div>
+                </CardContent>
+              </Card>
+
+              {/* Language switcher */}
+              <Card className="bg-white/95 backdrop-blur-sm">
+                <CardHeader>
+                  <CardTitle>{t('settings.language')}</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <p className="text-sm text-gray-600 mb-3">{t('settings.languageDesc')}</p>
+                  <Select value={locale} onValueChange={(v) => setLocale(v as 'ru' | 'en')}>
+                    <SelectTrigger className="w-full">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="ru">🇷🇺 Русский</SelectItem>
+                      <SelectItem value="en">🇺🇸 English</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </CardContent>
               </Card>
 
               <Card className="bg-white/95 backdrop-blur-sm">
                 <CardHeader>
-                  <CardTitle>Общие настройки</CardTitle>
+                  <CardTitle>{t('settings.general')}</CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-4">
                   <div className="flex items-center justify-between">
                     <div>
-                      <p className="font-medium">Автозапуск при старте системы</p>
-                      <p className="text-sm text-gray-600">Запускать AEZAKMI при включении компьютера</p>
+                      <p className="font-medium">{t('settings.autostart')}</p>
+                      <p className="text-sm text-gray-600">{t('settings.autostartDesc')}</p>
                     </div>
                     <Checkbox
                       checked={localStorage.getItem('aezakmi_autostart') === 'true'}
@@ -1241,8 +1237,8 @@ const Dashboard = () => {
                   </div>
                   <div className="flex items-center justify-between">
                     <div>
-                      <p className="font-medium">Минимизировать в трей</p>
-                      <p className="text-sm text-gray-600">Сворачивать приложение в системный трей</p>
+                      <p className="font-medium">{t('settings.minimizeToTray')}</p>
+                      <p className="text-sm text-gray-600">{t('settings.minimizeToTrayDesc')}</p>
                     </div>
                     <Checkbox
                       checked={localStorage.getItem('aezakmi_tray') !== 'false'}
@@ -1251,8 +1247,8 @@ const Dashboard = () => {
                   </div>
                   <div className="flex items-center justify-between">
                     <div>
-                      <p className="font-medium">Автоматическое обновление</p>
-                      <p className="text-sm text-gray-600">Проверять наличие новых версий при запуске</p>
+                      <p className="font-medium">{t('settings.autoUpdate')}</p>
+                      <p className="text-sm text-gray-600">{t('settings.autoUpdateDesc')}</p>
                     </div>
                     <Checkbox
                       checked={localStorage.getItem('aezakmi_auto_update') !== 'false'}
@@ -1264,13 +1260,13 @@ const Dashboard = () => {
 
               <Card className="bg-white/95 backdrop-blur-sm">
                 <CardHeader>
-                  <CardTitle>Безопасность</CardTitle>
+                  <CardTitle>{t('settings.security')}</CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-4">
                   <div className="flex items-center justify-between">
                     <div>
-                      <p className="font-medium">Очистка cookies при закрытии</p>
-                      <p className="text-sm text-gray-600">Удалять cookies после завершения сеанса</p>
+                      <p className="font-medium">{t('settings.clearCookies')}</p>
+                      <p className="text-sm text-gray-600">{t('settings.clearCookiesDesc')}</p>
                     </div>
                     <Checkbox
                       checked={localStorage.getItem('aezakmi_clear_cookies') === 'true'}
@@ -1279,8 +1275,8 @@ const Dashboard = () => {
                   </div>
                   <div className="flex items-center justify-between">
                     <div>
-                      <p className="font-medium">Блокировка WebRTC по умолчанию</p>
-                      <p className="text-sm text-gray-600">Включать блокировку WebRTC для новых профилей</p>
+                      <p className="font-medium">{t('settings.blockWebRTC')}</p>
+                      <p className="text-sm text-gray-600">{t('settings.blockWebRTCDesc')}</p>
                     </div>
                     <Checkbox
                       checked={localStorage.getItem('aezakmi_block_webrtc') !== 'false'}
@@ -1289,8 +1285,8 @@ const Dashboard = () => {
                   </div>
                   <div className="flex items-center justify-between">
                     <div>
-                      <p className="font-medium">Защита от скриншотов</p>
-                      <p className="text-sm text-gray-600">Блокировать создание скриншотов окон браузера</p>
+                      <p className="font-medium">{t('settings.screenshotProtection')}</p>
+                      <p className="text-sm text-gray-600">{t('settings.screenshotProtectionDesc')}</p>
                     </div>
                     <Checkbox
                       checked={localStorage.getItem('aezakmi_screenshot_protection') === 'true'}
@@ -1302,16 +1298,16 @@ const Dashboard = () => {
 
               <Card className="bg-white/95 backdrop-blur-sm">
                 <CardHeader>
-                  <CardTitle>О программе</CardTitle>
+                  <CardTitle>{t('settings.about')}</CardTitle>
                 </CardHeader>
                 <CardContent>
                   <div className="space-y-2">
-                    <p><strong>Версия:</strong> {getCurrentVersion()}</p>
-                    <p><strong>Дата сборки:</strong> {new Date().toLocaleDateString('ru-RU')}</p>
-                    <p><strong>Лицензия:</strong> Коммерческая</p>
+                    <p><strong>{t('common.version')}:</strong> {getCurrentVersion()}</p>
+                    <p><strong>{t('common.buildDate')}:</strong> {new Date().toLocaleDateString(locale === 'en' ? 'en-US' : 'ru-RU')}</p>
+                    <p><strong>{t('common.license')}:</strong> {t('common.commercial')}</p>
                     <div className="pt-4">
                       <Button variant="outline" className="w-full" onClick={handleCheckForUpdates}>
-                        Проверить обновления
+                        {t('settings.checkUpdates')}
                       </Button>
                     </div>
                   </div>
