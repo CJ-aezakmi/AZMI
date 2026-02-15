@@ -2,7 +2,7 @@
 import { invoke } from '@tauri-apps/api/core';
 
 const GITHUB_REPO = 'CJ-aezakmi/AZMI';
-const CURRENT_VERSION = '3.0.8';
+const CURRENT_VERSION = '3.0.9';
 
 export interface UpdateInfo {
   available: boolean;
@@ -146,10 +146,17 @@ export async function downloadUpdate(url: string, _onProgress?: (percent: number
 export async function installUpdate(installerPath: string): Promise<void> {
   try {
     await invoke('install_update', { installerPath });
-    // После этого приложение должно закрыться и запуститься установщик
-  } catch (error) {
+    // The app should close shortly after this returns
+  } catch (error: any) {
+    // When the app exits, the IPC channel breaks and invoke rejects.
+    // This is expected – ignore "connection" / empty errors.
+    const msg = typeof error === 'string' ? error : error?.message;
+    if (!msg || msg.includes('connection') || msg.includes('closed')) {
+      // Expected: app is shutting down after launching the installer
+      return;
+    }
     console.error('Error installing update:', error);
-    throw error;
+    throw new Error(msg || 'Install failed');
   }
 }
 

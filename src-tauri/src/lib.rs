@@ -1,4 +1,4 @@
-// src-tauri/src/lib.rs — AEZAKMI Pro v3.0.8
+// src-tauri/src/lib.rs — AEZAKMI Pro v3.0.9
 
 use base64::Engine;
 use tauri::Manager;
@@ -281,7 +281,7 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_shell::init())
         .setup(|app| {
-            println!("[STARTUP] AEZAKMI Pro v3.0.8");
+            println!("[STARTUP] AEZAKMI Pro v3.0.9");
             
             // Camoufox скачивается пользователем через UI при первом запуске
             // Playwright больше не используется
@@ -801,6 +801,11 @@ async fn download_update(app: tauri::AppHandle, url: String) -> Result<String, S
         }
     }
     
+    // Flush file to ensure all data is written to disk
+    file.flush()
+        .map_err(|e| format!("Ошибка сброса буфера: {}", e))?;
+    drop(file); // Explicitly close the file handle
+    
     println!("[UPDATE] ✅ Скачивание завершено: {} байт", downloaded);
     
     Ok(file_path.to_string_lossy().to_string())
@@ -808,7 +813,7 @@ async fn download_update(app: tauri::AppHandle, url: String) -> Result<String, S
 
 /// Запускает установщик и закрывает текущее приложение
 #[tauri::command]
-async fn install_update(installer_path: String) -> Result<(), String> {
+async fn install_update(app: tauri::AppHandle, installer_path: String) -> Result<(), String> {
     use std::process::Command;
     
     println!("[UPDATE] Запуск установщика: {}", installer_path);
@@ -824,26 +829,30 @@ async fn install_update(installer_path: String) -> Result<(), String> {
         // Запускаем установщик Windows (.msi или .exe)
         if installer_path.ends_with(".msi") {
             // MSI установщик
-            let _child = Command::new("msiexec")
+            Command::new("msiexec")
                 .arg("/i")
                 .arg(&installer_path)
-                .arg("/qb") // Базовый UI с прогрессом
+                .arg("/qb")
                 .spawn()
                 .map_err(|e| format!("Ошибка запуска установщика: {}", e))?;
         } else {
-            // EXE установщик
-            let _child = Command::new(&installer_path)
+            // EXE установщик (NSIS)
+            Command::new(&installer_path)
                 .spawn()
                 .map_err(|e| format!("Ошибка запуска установщика: {}", e))?;
         }
         
         println!("[UPDATE] ✅ Установщик запущен. Завершаем приложение...");
         
-        // Даем время на запуск установщика
-        tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
+        // Spawn a background task to exit the app after the response is sent
+        let app_handle = app.clone();
+        tokio::spawn(async move {
+            // Give time for the IPC response to reach the frontend
+            tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
+            app_handle.exit(0);
+        });
         
-        // Закрываем приложение
-        std::process::exit(0);
+        return Ok(());
     }
     
     #[cfg(not(target_os = "windows"))]

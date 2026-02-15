@@ -497,7 +497,8 @@ const Dashboard = () => {
       // После вызова installUpdate приложение закроется
     } catch (error: any) {
       console.error('Error installing update:', error);
-      toast.error(t('updater.installError', { message: error.message }));
+      const errMsg = typeof error === 'string' ? error : (error?.message || String(error));
+      toast.error(t('updater.installError', { message: errMsg }));
     }
   };
 
