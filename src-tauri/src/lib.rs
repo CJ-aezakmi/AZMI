@@ -1,4 +1,4 @@
-// src-tauri/src/lib.rs — AEZAKMI Pro v3.0.10
+// src-tauri/src/lib.rs — AEZAKMI Pro v3.2.0
 
 use base64::Engine;
 use tauri::Manager;
@@ -281,7 +281,7 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_shell::init())
         .setup(|app| {
-            println!("[STARTUP] AEZAKMI Pro v3.0.10");
+            println!("[STARTUP] AEZAKMI Pro v3.2.0");
             
             // Camoufox скачивается пользователем через UI при первом запуске
             // Playwright больше не используется
@@ -814,8 +814,6 @@ async fn download_update(app: tauri::AppHandle, url: String) -> Result<String, S
 /// Запускает установщик и закрывает текущее приложение
 #[tauri::command]
 async fn install_update(app: tauri::AppHandle, installer_path: String) -> Result<(), String> {
-    use std::process::Command;
-    
     println!("[UPDATE] Запуск установщика: {}", installer_path);
     
     let path = std::path::Path::new(&installer_path);
@@ -826,23 +824,41 @@ async fn install_update(app: tauri::AppHandle, installer_path: String) -> Result
     
     #[cfg(target_os = "windows")]
     {
-        // Запускаем установщик Windows (.msi или .exe)
-        if installer_path.ends_with(".msi") {
-            // MSI установщик
-            Command::new("msiexec")
-                .arg("/i")
-                .arg(&installer_path)
-                .arg("/qb")
-                .spawn()
-                .map_err(|e| format!("Ошибка запуска установщика: {}", e))?;
-        } else {
-            // EXE установщик (NSIS)
-            Command::new(&installer_path)
-                .spawn()
-                .map_err(|e| format!("Ошибка запуска установщика: {}", e))?;
+        // Use ShellExecuteW with "runas" verb to auto-request UAC elevation
+        // This avoids OS error 740 when NSIS installer requires admin rights
+        use std::os::windows::ffi::OsStrExt;
+        use std::ffi::OsStr;
+
+        fn to_wide(s: &str) -> Vec<u16> {
+            OsStr::new(s).encode_wide().chain(std::iter::once(0)).collect()
+        }
+
+        let verb = to_wide("runas");
+        let file = to_wide(&installer_path);
+        let params = to_wide("");
+        let dir = to_wide("");
+
+        let result = unsafe {
+            // SW_SHOWNORMAL = 1
+            windows_sys::Win32::UI::Shell::ShellExecuteW(
+                std::ptr::null_mut(),
+                verb.as_ptr(),
+                file.as_ptr(),
+                params.as_ptr(),
+                dir.as_ptr(),
+                1, // SW_SHOWNORMAL
+            )
+        };
+
+        // ShellExecuteW returns > 32 on success
+        if (result as isize) <= 32 {
+            return Err(format!(
+                "Ошибка запуска установщика (код {}). Попробуйте запустить AEZAKMI от имени администратора.",
+                result as isize
+            ));
         }
         
-        println!("[UPDATE] ✅ Установщик запущен. Завершаем приложение...");
+        println!("[UPDATE] ✅ Установщик запущен с повышением прав. Завершаем приложение...");
         
         // Spawn a background task to exit the app after the response is sent
         let app_handle = app.clone();
