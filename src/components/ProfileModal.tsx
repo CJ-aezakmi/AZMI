@@ -323,14 +323,6 @@ const ProfileModal = ({ open, onOpenChange, onSave, profile, proxies, folders = 
 
           <TabsContent value="browser" className="space-y-4">
             <div>
-              <Label htmlFor="browserEngine">{t('profileModal.engineLabel')}</Label>
-              <div className="flex items-center gap-2 px-3 py-2 bg-green-900/30 border border-green-600/30 rounded-md text-sm">
-                <span>🦊</span>
-                <span className="text-green-400 font-medium">{t('profileModal.camoufoxLabel')}</span>
-              </div>
-            </div>
-
-            <div>
               <Label htmlFor="userAgent">{t('profileModal.userAgent')}</Label>
               <Select value={formData.userAgent} onValueChange={(value) => setFormData({ ...formData, userAgent: value })}>
                 <SelectTrigger>

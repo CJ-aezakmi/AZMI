@@ -1,6 +1,6 @@
 {
   "productName": "AEZAKMI",
-  "version": "3.0.9",
+  "version": "3.0.10",
   "identifier": "com.aezakmi.antidetect",
   "build": {
     "beforeDevCommand": "pnpm dev",

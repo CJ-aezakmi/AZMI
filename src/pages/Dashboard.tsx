@@ -1189,19 +1189,6 @@ const Dashboard = () => {
           <div className="p-8">
             <h2 className="text-2xl font-bold mb-6">{t('settings.title')}</h2>
             <div className="space-y-4 max-w-2xl">
-              {/* Движок браузера по умолчанию */}
-              <Card className="bg-white/95 backdrop-blur-sm">
-                <CardHeader>
-                  <CardTitle>{t('settings.browserEngine')}</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <p className="text-sm text-gray-600 mb-3">{t('settings.browserEngineDesc')}</p>
-                  <div className="flex items-center gap-2 px-3 py-2 bg-green-50 border border-green-200 rounded-md text-sm">
-                    <span className="text-green-700 font-medium">{t('settings.camoufoxLabel')}</span>
-                  </div>
-                </CardContent>
-              </Card>
-
               {/* Language switcher */}
               <Card className="bg-white/95 backdrop-blur-sm">
                 <CardHeader>
