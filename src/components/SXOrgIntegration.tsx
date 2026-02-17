@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { open as shellOpen } from '@tauri-apps/plugin-shell';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -187,7 +188,7 @@ const SXOrgIntegration = ({ open, onClose, onProxiesImported }: SXOrgIntegration
           <div className="flex justify-between gap-2">
             <Button
               variant="outline"
-              onClick={() => window.open('https://my.sx.org/auth/login/?utm-source=aezakmi', '_blank')}
+              onClick={() => shellOpen('https://my.sx.org/auth/login/?utm-source=aezakmi')}
               className="flex-1"
             >
               <ExternalLink className="w-4 h-4 mr-2" />
@@ -238,7 +239,7 @@ const SXOrgIntegration = ({ open, onClose, onProxiesImported }: SXOrgIntegration
             </div>
             <Button
               variant="outline"
-              onClick={() => window.open('https://my.sx.org/auth/login/?utm-source=aezakmi', '_blank')}
+              onClick={() => shellOpen('https://my.sx.org/auth/login/?utm-source=aezakmi')}
               className="flex items-center gap-2"
             >
               <DollarSign className="w-4 h-4" />

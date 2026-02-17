@@ -1,4 +1,4 @@
-// src-tauri/src/lib.rs — AEZAKMI Pro v3.2.0
+// src-tauri/src/lib.rs — AEZAKMI Pro v3.2.1
 
 use base64::Engine;
 use tauri::Manager;
@@ -281,7 +281,7 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_shell::init())
         .setup(|app| {
-            println!("[STARTUP] AEZAKMI Pro v3.2.0");
+            println!("[STARTUP] AEZAKMI Pro v3.2.1");
             
             // Camoufox скачивается пользователем через UI при первом запуске
             // Playwright больше не используется
