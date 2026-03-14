@@ -7,20 +7,35 @@ import { getTimezoneAndLanguageFromProxy } from './geoip';
  * Генерация User-Agent на основе ОС и типа браузера
  */
 function generateUserAgent(profile: Profile): string {
-  if (profile.userAgent && profile.userAgent !== 'auto') {
-    return profile.userAgent;
-  }
-
-  const os = profile.os || 'windows';
-
-  const userAgents: Record<string, string> = {
+  const firefoxUAs: Record<string, string> = {
+    firefox_win: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:135.0) Gecko/20100101 Firefox/135.0',
+    firefox_mac: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:135.0) Gecko/20100101 Firefox/135.0',
+    firefox_linux: 'Mozilla/5.0 (X11; Linux x86_64; rv:135.0) Gecko/20100101 Firefox/135.0',
+    // Legacy Chrome/Safari values from old profiles → map to Firefox equivalents
+    chrome_win: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:135.0) Gecko/20100101 Firefox/135.0',
+    chrome_mac: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:135.0) Gecko/20100101 Firefox/135.0',
+    safari_mac: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:135.0) Gecko/20100101 Firefox/135.0',
+    // OS-based fallbacks
     windows: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:135.0) Gecko/20100101 Firefox/135.0',
     macos: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:135.0) Gecko/20100101 Firefox/135.0',
     linux: 'Mozilla/5.0 (X11; Linux x86_64; rv:135.0) Gecko/20100101 Firefox/135.0',
   };
 
-  const osKey = os.toLowerCase();
-  return userAgents[osKey] || userAgents.windows;
+  // If specific UA preset selected from dropdown
+  if (profile.userAgent && profile.userAgent !== 'auto') {
+    // Map dropdown values (firefox_win, etc.) to real UA strings
+    if (firefoxUAs[profile.userAgent]) {
+      return firefoxUAs[profile.userAgent];
+    }
+    // If it's already a full UA string (custom), return as-is
+    if (profile.userAgent.startsWith('Mozilla/')) {
+      return profile.userAgent;
+    }
+  }
+
+  // Auto mode: pick Firefox UA based on OS setting
+  const osKey = (profile.os || 'windows').toLowerCase();
+  return firefoxUAs[osKey] || firefoxUAs.windows;
 }
 
 /**

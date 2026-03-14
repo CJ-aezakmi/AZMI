@@ -330,11 +330,9 @@ const ProfileModal = ({ open, onOpenChange, onSave, profile, proxies, folders = 
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="auto">{t('profileModal.uaAuto')}</SelectItem>
-                  <SelectItem value="chrome_win">Chrome Windows</SelectItem>
-                  <SelectItem value="chrome_mac">Chrome macOS</SelectItem>
                   <SelectItem value="firefox_win">Firefox Windows</SelectItem>
                   <SelectItem value="firefox_mac">Firefox macOS</SelectItem>
-                  <SelectItem value="safari_mac">Safari macOS</SelectItem>
+                  <SelectItem value="firefox_linux">Firefox Linux</SelectItem>
                 </SelectContent>
               </Select>
             </div>

@@ -1,6 +1,5 @@
-// src-tauri/src/lib.rs — AEZAKMI Pro v3.2.1
+// src-tauri/src/lib.rs — AEZAKMI Pro v3.2.2
 
-use base64::Engine;
 use tauri::Manager;
 use tauri::Emitter;
 use std::sync::Mutex;
@@ -281,7 +280,7 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_shell::init())
         .setup(|app| {
-            println!("[STARTUP] AEZAKMI Pro v3.2.1");
+            println!("[STARTUP] AEZAKMI Pro v3.2.2");
             
             // Camoufox скачивается пользователем через UI при первом запуске
             // Playwright больше не используется
@@ -454,8 +453,6 @@ fn open_profile(_app: tauri::AppHandle, app_path: String, args: String) -> Resul
         _ => return Err(format!("Unknown launcher: {}", app_path)),
     };
 
-    let payload_b64 = base64::engine::general_purpose::STANDARD.encode(&args);
-
     // Находим bundled node.exe
     let node_exe = get_node_exe()?;
     let cache_dir = get_playwright_cache_dir()?;
@@ -467,6 +464,11 @@ fn open_profile(_app: tauri::AppHandle, app_path: String, args: String) -> Resul
     let profiles_dir = data_dir.join("profiles");
     std::fs::create_dir_all(&profiles_dir)
         .map_err(|e| format!("Не удалось создать директорию профилей: {}", e))?;
+    
+    // Write payload to temp file (avoids Windows command line length limits with cookies)
+    let payload_file = profiles_dir.join(format!(".launch_payload_{}.json", std::process::id()));
+    std::fs::write(&payload_file, &args)
+        .map_err(|e| format!("Не удалось записать payload: {}", e))?;
     
     // Находим скрипт
     let app_dir = get_app_dir()?;
@@ -500,7 +502,7 @@ fn open_profile(_app: tauri::AppHandle, app_path: String, args: String) -> Resul
     
     let mut cmd = Command::new(&node_exe);
     cmd.arg(&script_path)
-       .arg(format!("--payload={}", payload_b64))
+       .arg(format!("--payload-file={}", payload_file.display()))
        .env("PLAYWRIGHT_BROWSERS_PATH", &cache_dir)
        .env("NODE_PATH", &node_path_env)
        .env("PATH", &enhanced_path)
