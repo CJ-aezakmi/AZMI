@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Plus, Search, Play, Edit, Copy, Trash2, Globe, Folder, Puzzle, BarChart3, Settings, Download, Upload, RefreshCw, Cookie, Smartphone, Monitor } from 'lucide-react';
+import { Plus, Search, Play, Edit, Copy, Trash2, Globe, Folder, Puzzle, BarChart3, Settings, Download, Upload, RefreshCw, Cookie, Smartphone, Monitor, ListChecks } from 'lucide-react';
 import { useTranslation } from '@/lib/i18n';
 import { ru } from '@/locales/ru';
 import { en } from '@/locales/en';
@@ -14,6 +14,7 @@ import ProxyModal from '@/components/ProxyModal';
 import SXOrgIntegration from '@/components/SXOrgIntegration';
 import UpdateDialog from '@/components/UpdateDialog';
 import CookieBotModal from '@/components/CookieBotModal';
+import ChecklistGuide from '@/components/ChecklistGuide';
 import { toast } from 'sonner';
 import { Profile, Proxy, BrowserEngine, CookieEntry } from '@/types';
 import { launchProfile } from '@/lib/launchProfile';
@@ -534,6 +535,7 @@ const Dashboard = () => {
     { id: 'profiles', label: t('nav.allProfiles'), icon: Play, count: profiles.length },
     { id: 'folders', label: t('nav.folders'), icon: Folder, count: folders.length },
     { id: 'proxies', label: t('nav.proxies'), icon: Globe, count: proxies.length },
+    { id: 'checklist', label: t('nav.checklist'), icon: ListChecks },
     { id: 'statistics', label: t('nav.statistics'), icon: BarChart3 },
     { id: 'settings', label: t('nav.settings'), icon: Settings },
   ];
@@ -1303,6 +1305,12 @@ const Dashboard = () => {
               </Card>
             </div>
           </div>
+        )}
+        {activeView === 'checklist' && (
+          <ChecklistGuide onOpenSXOrg={() => {
+            setActiveView('proxies');
+            setIsSXOrgModalOpen(true);
+          }} />
         )}
       </main>
 

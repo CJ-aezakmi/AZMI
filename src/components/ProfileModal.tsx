@@ -12,6 +12,7 @@ import { Zap, Globe, Smartphone, Monitor, Upload, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import sxorgLogo from '@/assets/sxorg-logo.svg';
 import { useTranslation } from '@/lib/i18n';
+import { loadChecklistProgress } from '@/lib/checklistData';
 
 interface ProfileModalProps {
   open: boolean;
@@ -24,7 +25,7 @@ interface ProfileModalProps {
 }
 
 const ProfileModal = ({ open, onOpenChange, onSave, profile, proxies, folders = [], onOpenSXOrg }: ProfileModalProps) => {
-  const { t } = useTranslation();
+  const { t, locale } = useTranslation();
   const [formData, setFormData] = useState({
     name: '',
     notes: '',
@@ -467,6 +468,58 @@ const ProfileModal = ({ open, onOpenChange, onSave, profile, proxies, folders = 
                 </p>
               </div>
               <div className="flex gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    const progress = loadChecklistProgress();
+                    const accountStep = progress['accounts'];
+                    if (accountStep?.cookieData) {
+                      try {
+                        let parsed: CookieEntry[] = [];
+                        try {
+                          const json = JSON.parse(accountStep.cookieData);
+                          if (Array.isArray(json)) {
+                            parsed = json.map((c: Record<string, unknown>) => ({
+                              name: String(c.name || ''),
+                              value: String(c.value || ''),
+                              domain: String(c.domain || ''),
+                              path: String(c.path || '/'),
+                              expires: typeof c.expirationDate === 'number' ? c.expirationDate : typeof c.expires === 'number' ? c.expires : undefined,
+                              httpOnly: !!c.httpOnly,
+                              secure: !!c.secure,
+                              sameSite: (c.sameSite === 'no_restriction' ? 'None' : c.sameSite === 'lax' ? 'Lax' : c.sameSite === 'strict' ? 'Strict' : 'Lax') as 'Strict' | 'Lax' | 'None',
+                            }));
+                          }
+                        } catch {
+                          parsed = accountStep.cookieData.split('\n')
+                            .filter((line: string) => line.trim() && !line.startsWith('#'))
+                            .map((line: string) => {
+                              const parts = line.split('\t');
+                              if (parts.length >= 7) {
+                                return { name: parts[5], value: parts[6], domain: parts[0], path: parts[2], expires: parts[4] !== '0' ? parseInt(parts[4]) : undefined, httpOnly: parts[1] === 'TRUE', secure: parts[3] === 'TRUE', sameSite: 'Lax' as const };
+                              }
+                              return null;
+                            })
+                            .filter(Boolean) as CookieEntry[];
+                        }
+                        if (parsed.length > 0) {
+                          setCookies(prev => [...prev, ...parsed]);
+                          toast.success(t('profileModal.cookiesLoadedToast', { count: String(parsed.length) }));
+                        } else {
+                          toast.error(t('profileModal.cookiesRecognizeFailed'));
+                        }
+                      } catch {
+                        toast.error(t('profileModal.cookiesFileError'));
+                      }
+                    } else {
+                      toast.info(locale === 'ru' ? 'Нет куки в чеклисте. Загрузите их на этапе 4 (Аккаунты).' : 'No cookies in checklist. Upload them in step 4 (Accounts).');
+                    }
+                  }}
+                >
+                  🍪 {locale === 'ru' ? 'Из чеклиста' : 'From Checklist'}
+                </Button>
                 <Button
                   type="button"
                   variant="outline"

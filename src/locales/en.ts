@@ -49,6 +49,7 @@ export const en: TranslationKeys = {
     proxies: 'Proxies',
     statistics: 'Statistics',
     settings: 'Settings',
+    checklist: 'Checklist',
     createProfile: 'Create profile',
   },
 

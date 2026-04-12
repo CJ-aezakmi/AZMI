@@ -47,6 +47,7 @@ export const ru = {
     proxies: 'Прокси',
     statistics: 'Статистика',
     settings: 'Настройки',
+    checklist: 'Чеклист',
     createProfile: 'Создать профиль',
   },
 
