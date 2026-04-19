@@ -467,6 +467,16 @@ const MyToolsPanel = ({
                 </div>
               )}
 
+              {/* Card autofill indicator */}
+              {entry.step.id === 'cards' && entry.value && entry.value.replace(/\s+/g, '').length >= 13 && (
+                <div className="flex items-center gap-2 rounded-lg bg-indigo-50 border border-indigo-200 px-3 py-1.5">
+                  <span className="text-sm">💳</span>
+                  <span className="text-[11px] text-indigo-700 font-medium">
+                    {locale === 'ru' ? 'Карта + срок + CVV будут предложены в браузере' : 'Card + expiry + CVV will be offered in browser'}
+                  </span>
+                </div>
+              )}
+
               {/* Proxy status */}
               {entry.step.isProxyStep && (
                 <ProxyStatus hasApiKey={!!getSXOrgApiKey()} locale={locale} />
@@ -661,6 +671,31 @@ const ChecklistGuide = ({ onOpenSXOrg }: ChecklistGuideProps) => {
         cookieFilename: stepCookies[current.id]?.filename || undefined,
       },
     }));
+
+    // Если это шаг "Виртуальные карты" и введён номер карты — сохраняем для автозаполнения
+    if (current.id === 'cards' && inputValues[current.id]) {
+      const cardNumber = inputValues[current.id].replace(/\s+/g, '');
+      if (cardNumber.length >= 13) {
+        try {
+          const raw = localStorage.getItem('aezakmi_saved_cards');
+          const cards = raw ? JSON.parse(raw) : [];
+          const exists = cards.some((c: any) => (c['cc-number'] || '').replace(/\s+/g, '') === cardNumber);
+          if (!exists) {
+            const expParts = (inputValues['card-exp'] || '').split('/');
+            const expMonth = parseInt(expParts[0]) || 0;
+            const expYear = expParts[1] ? (parseInt(expParts[1]) < 100 ? 2000 + parseInt(expParts[1]) : parseInt(expParts[1])) : 0;
+            const card: any = { 'cc-number': cardNumber };
+            if (inputValues['card-name']) card['cc-name'] = inputValues['card-name'];
+            if (expMonth) card['cc-exp-month'] = expMonth;
+            if (expYear) card['cc-exp-year'] = expYear;
+            if (inputValues['card-cvv']) card['cc-csc'] = inputValues['card-cvv'];
+            cards.push(card);
+            localStorage.setItem('aezakmi_saved_cards', JSON.stringify(cards));
+          }
+        } catch { /* ignore */ }
+      }
+    }
+
     setConfetti(true);
     clearTimeout(confettiTimer.current);
     confettiTimer.current = setTimeout(() => setConfetti(false), 100);
@@ -930,6 +965,54 @@ const ChecklistGuide = ({ onOpenSXOrg }: ChecklistGuideProps) => {
                         <CheckCircle2 className="w-3.5 h-3.5 text-green-500/60" />
                       </div>
                     )}
+                  </div>
+                </div>
+              )}
+
+              {/* Card detail fields: name + expiry + CVV */}
+              {current.id === 'cards' && inputValues[current.id] && inputValues[current.id].replace(/\s+/g, '').length >= 13 && (
+                <div className="space-y-2">
+                  <div className="space-y-1">
+                    <label className="text-[11px] font-semibold text-foreground/80">
+                      {locale === 'ru' ? 'Имя на карте' : 'Name on card'}
+                    </label>
+                    <Input
+                      value={inputValues['card-name'] || ''}
+                      onChange={e => setInputValues(prev => ({ ...prev, 'card-name': e.target.value }))}
+                      placeholder="IVAN IVANOV"
+                      className="h-8 text-xs bg-white border border-gray-300 rounded-lg text-foreground placeholder:text-muted-foreground/60 focus:border-gray-400 focus:ring-1 focus:ring-gray-200"
+                    />
+                  </div>
+                  <div className="flex gap-2">
+                    <div className="flex-1 space-y-1">
+                      <label className="text-[11px] font-semibold text-foreground/80">
+                        {locale === 'ru' ? 'Срок (MM/YY)' : 'Expiry (MM/YY)'}
+                      </label>
+                      <Input
+                        value={inputValues['card-exp'] || ''}
+                        onChange={e => {
+                          let v = e.target.value.replace(/[^0-9/]/g, '');
+                          if (v.length === 2 && !v.includes('/') && !(inputValues['card-exp'] || '').includes('/')) v += '/';
+                          if (v.length > 5) v = v.slice(0, 5);
+                          setInputValues(prev => ({ ...prev, 'card-exp': v }));
+                        }}
+                        placeholder="MM/YY"
+                        className="h-8 text-xs bg-white border border-gray-300 rounded-lg text-foreground placeholder:text-muted-foreground/60 focus:border-gray-400 focus:ring-1 focus:ring-gray-200"
+                      />
+                    </div>
+                    <div className="flex-1 space-y-1">
+                      <label className="text-[11px] font-semibold text-foreground/80">CVV</label>
+                      <Input
+                        value={inputValues['card-cvv'] || ''}
+                        onChange={e => {
+                          const v = e.target.value.replace(/\D/g, '').slice(0, 4);
+                          setInputValues(prev => ({ ...prev, 'card-cvv': v }));
+                        }}
+                        placeholder="123"
+                        type="password"
+                        className="h-8 text-xs bg-white border border-gray-300 rounded-lg text-foreground placeholder:text-muted-foreground/60 focus:border-gray-400 focus:ring-1 focus:ring-gray-200"
+                      />
+                    </div>
                   </div>
                 </div>
               )}

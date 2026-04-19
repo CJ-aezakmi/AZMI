@@ -171,6 +171,7 @@ export interface LaunchConfig {
   timezoneId?: string; // Часовой пояс (например, 'Europe/Moscow', 'America/New_York')
   autoDetectLocale?: boolean; // Флаг: определить timezone/language по реальному исходящему IP прокси
   cookies?: CookieEntry[]; // Cookies для загрузки в браузер
+  savedCards?: SavedCard[]; // Сохранённые карты для автозаполнения
 }
 
 // Cookie запись для импорта/экспорта
@@ -183,4 +184,14 @@ export interface CookieEntry {
   httpOnly?: boolean;
   secure?: boolean;
   sameSite?: 'Strict' | 'Lax' | 'None';
+}
+
+// Сохранённая карта для автозаполнения в браузере
+export interface SavedCard {
+  'cc-number': string;
+  'cc-name'?: string;
+  'cc-exp-month'?: number;
+  'cc-exp-year'?: number;
+  'cc-type'?: string;
+  'cc-csc'?: string;
 }

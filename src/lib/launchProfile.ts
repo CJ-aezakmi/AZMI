@@ -1,7 +1,21 @@
 // src/lib/launchProfile.ts — УЛУЧШЕННАЯ ВЕРСИЯ С РАСШИРЕННЫМ АНТИДЕТЕКТОМ
 import { invoke } from '@tauri-apps/api/core';
-import type { Profile, LaunchConfig } from '@/types';
+import type { Profile, LaunchConfig, SavedCard } from '@/types';
 import { getTimezoneAndLanguageFromProxy } from './geoip';
+
+/**
+ * Загрузка сохранённых карт из localStorage (чеклист → инструменты)
+ */
+function loadSavedCards(): SavedCard[] | undefined {
+  try {
+    const raw = localStorage.getItem('aezakmi_saved_cards');
+    if (!raw) return undefined;
+    const cards = JSON.parse(raw) as SavedCard[];
+    return cards.length > 0 ? cards : undefined;
+  } catch {
+    return undefined;
+  }
+}
 
 /**
  * Генерация User-Agent на основе ОС и типа браузера
@@ -130,6 +144,7 @@ export async function launchProfile(profile: Profile) {
       timezoneId: profile.timezone || 'Europe/Moscow', // Базовое значение, будет обновлено в launcher
       autoDetectLocale: !!proxyData, // Флаг для автоопределения по реальному IP
       cookies: profile.cookies, // Импортированные cookies
+      savedCards: loadSavedCards(), // Карты из инструментов для автозаполнения
     };
 
     // Конвертируем в JSON и base64 для передачи через Rust

@@ -204,15 +204,15 @@ export const checklistSteps: ChecklistStep[] = [
     guide: {
       ru: [
         'Виртуальные карты нужны для оплаты рекламы в Facebook, Google, TikTok. Обычные банковские карты часто блокируются.',
-        'E.PN - специализированный сервис карт для арбитража. Поддерживает BIN-ы, которые принимают рекламные платформы.',
-        'Процесс: регистрация → KYC (верификация) → пополнение (USDT, крипто) → создание карты → привязка к рекламному кабинету.',
+        'e.PN - специализированный сервис карт для арбитража. Поддерживает BIN-ы, которые принимают рекламные платформы.',
+        'Процесс: регистрация → пополнение (USDT, крипто) → создание карты → привязка к рекламному кабинету.',,
         'Важно: один рекламный кабинет = одна карта. Не используй одну карту на несколько аккаунтов.',
         'Совет: пополняй карту с запасом 10-20% от бюджета на случай списаний.',
       ],
       en: [
         'Virtual cards are needed to pay for ads on Facebook, Google, TikTok. Regular bank cards are often blocked.',
-        'E.PN is a specialized card service for media buying. Supports BINs accepted by ad platforms.',
-        'Process: registration → KYC → top up (USDT, crypto) → create card → link to ad account.',
+        'e.PN is a specialized card service for media buying. Supports BINs accepted by ad platforms.',
+        'Process: registration → top up (USDT, crypto) → create card → link to ad account.',,
         'Important: one ad account = one card. Don\'t use one card for multiple accounts.',
         'Tip: top up with 10-20% extra budget for potential charges.',
       ],
@@ -222,15 +222,15 @@ export const checklistSteps: ChecklistStep[] = [
     services: [
       {
         id: 'epn',
-        name: 'E.PN',
+        name: 'e.PN',
         domain: 'e.pn',
         brandColor: '#7C4DFF',
         brandLetter: 'EP',
         url: 'https://e.pn/?ref=aezakmi',
         description: { ru: 'Виртуальные карты для арбитража. BIN под FB, Google, TikTok.', en: 'Virtual cards for media buying. BINs for FB, Google, TikTok.' },
         instruction: {
-          ru: ['Перейдите на e.pn', 'Зарегистрируйтесь', 'Пройдите верификацию (KYC)', 'Пополните баланс (USDT, крипто, карта)', '«Карты» → «Создать» → выберите BIN под платформу', 'Скопируйте данные карты → привяжите к рекламному кабинету'],
-          en: ['Go to e.pn', 'Register', 'Complete KYC', 'Top up (USDT, crypto, card)', '"Cards" → "Create" → pick BIN for platform', 'Copy card details → link to ad account'],
+          ru: ['Перейдите на e.PN', 'Зарегистрируйтесь', 'Пополните баланс (USDT, крипто, карта)', '«Карты» → «Создать» → выберите BIN под платформу', 'Скопируйте данные карты → привяжите к рекламному кабинету'],
+          en: ['Go to e.PN', 'Register', 'Top up (USDT, crypto, card)', '"Cards" → "Create" → pick BIN for platform', 'Copy card details → link to ad account'],
         },
       },
     ],
@@ -319,7 +319,7 @@ export const checklistSteps: ChecklistStep[] = [
         'После покупки скачай куки аккаунта → загрузи их через кнопку ниже → импортируй в профиль AEZAKMI.',
         'Ручной фарм: создай аккаунт через профиль AEZAKMI с прокси → прогревай 5-7 дней (лайки, посты, друзья) → создай рекламный кабинет.',
         'Важно: каждый аккаунт должен работать через свой прокси и свой профиль. Не смешивай!',
-        'Совет: привязывай виртуальную карту E.PN только после прогрева. Сразу не лей - подожди 1-2 дня.',
+        'Совет: привязывай виртуальную карту e.PN только после прогрева. Сразу не лей - подожди 1-2 дня.',
       ],
       en: [
         'Ad accounts are the foundation for launching ads. Two paths: buy ready-made or create yourself (farm).',
@@ -327,7 +327,7 @@ export const checklistSteps: ChecklistStep[] = [
         'After purchase, download account cookies → upload them below → import into AEZAKMI profile.',
         'Manual farm: create account through AEZAKMI profile with proxy → warm up 5-7 days → create ad account.',
         'Important: each account must work through its own proxy and profile. Don\'t mix!',
-        'Tip: link E.PN virtual card only after warming up. Don\'t start immediately - wait 1-2 days.',
+        'Tip: link e.PN virtual card only after warming up. Don\'t start immediately - wait 1-2 days.',
       ],
     },
     inputLabel: { ru: 'ID аккаунта', en: 'Account ID' },
@@ -342,8 +342,8 @@ export const checklistSteps: ChecklistStep[] = [
         url: 'https://fb1.shop/',
         description: { ru: 'Магазин аккаунтов Facebook. Фарм-аккаунты, BM, бизнес-менеджеры.', en: 'Facebook account shop. Farm accounts, BM, business managers.' },
         instruction: {
-          ru: ['Перейдите на fb1.shop', 'Зарегистрируйтесь и пополните баланс', 'Выберите тип аккаунта (фарм, BM, авторежим)', 'Скачайте куки / данные аккаунта', 'Импортируйте куки в профиль AEZAKMI', 'Запустите профиль → залогиньтесь', 'Привяжите виртуальную карту E.PN'],
-          en: ['Go to fb1.shop', 'Register and top up', 'Select account type (farm, BM, auto-reg)', 'Download cookies / account data', 'Import cookies into AEZAKMI profile', 'Launch profile → log in', 'Link E.PN virtual card'],
+          ru: ['Перейдите на fb1.shop', 'Зарегистрируйтесь и пополните баланс', 'Выберите тип аккаунта (фарм, BM, авторежим)', 'Скачайте куки / данные аккаунта', 'Импортируйте куки в профиль AEZAKMI', 'Запустите профиль → залогиньтесь', 'Привяжите виртуальную карту e.PN'],
+          en: ['Go to fb1.shop', 'Register and top up', 'Select account type (farm, BM, auto-reg)', 'Download cookies / account data', 'Import cookies into AEZAKMI profile', 'Launch profile → log in', 'Link e.PN virtual card'],
         },
       },
       {
@@ -354,8 +354,8 @@ export const checklistSteps: ChecklistStep[] = [
         url: '',
         description: { ru: 'Самостоятельный прогрев аккаунта в AEZAKMI.', en: 'Manual account warming in AEZAKMI.' },
         instruction: {
-          ru: ['Создайте профиль в AEZAKMI', 'Назначьте резидентный прокси (SX.ORG)', 'Зарегистрируйте аккаунт FB через профиль', 'Прогревайте 3-7 дней: лайки, посты, друзья', 'Создайте бизнес-менеджер и рекламный кабинет', 'Привяжите виртуальную карту E.PN'],
-          en: ['Create profile in AEZAKMI', 'Assign residential proxy (SX.ORG)', 'Register FB account through profile', 'Warm up 3-7 days: likes, posts, friends', 'Create Business Manager and ad account', 'Link E.PN virtual card'],
+          ru: ['Создайте профиль в AEZAKMI', 'Назначьте резидентный прокси (SX.ORG)', 'Зарегистрируйте аккаунт FB через профиль', 'Прогревайте 3-7 дней: лайки, посты, друзья', 'Создайте бизнес-менеджер и рекламный кабинет', 'Привяжите виртуальную карту e.PN'],
+          en: ['Create profile in AEZAKMI', 'Assign residential proxy (SX.ORG)', 'Register FB account through profile', 'Warm up 3-7 days: likes, posts, friends', 'Create Business Manager and ad account', 'Link e.PN virtual card'],
         },
       },
     ],
