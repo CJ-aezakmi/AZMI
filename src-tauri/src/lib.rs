@@ -1,4 +1,4 @@
-// src-tauri/src/lib.rs — AEZAKMI Pro v3.2.4
+// src-tauri/src/lib.rs — AEZAKMI Pro v3.2.5
 
 use tauri::Manager;
 use tauri::Emitter;
@@ -280,7 +280,7 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_shell::init())
         .setup(|app| {
-            println!("[STARTUP] AEZAKMI Pro v3.2.4");
+            println!("[STARTUP] AEZAKMI Pro v3.2.5");
             
             // Camoufox скачивается пользователем через UI при первом запуске
             // Playwright больше не используется
