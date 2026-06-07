@@ -67,5 +67,10 @@
   "bugs": {
     "url": "https://github.com/CJ-aezakmi/AZMI/issues"
   },
-  "homepage": "https://github.com/CJ-aezakmi/AZMI#readme"
+  "homepage": "https://github.com/CJ-aezakmi/AZMI#readme",
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "esbuild"
+    ]
+  }
 }
