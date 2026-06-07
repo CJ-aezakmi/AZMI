@@ -32,7 +32,7 @@ jobs:
           node-version: '22'
 
       - name: Setup pnpm
-        run: npm install -g pnpm@latest
+        run: npm install -g pnpm@9
 
       - name: Install Rust stable
         uses: dtolnay/rust-toolchain@stable
