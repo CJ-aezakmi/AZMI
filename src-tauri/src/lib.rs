@@ -1,4 +1,4 @@
-// src-tauri/src/lib.rs — AEZAKMI Pro v3.2.5
+// src-tauri/src/lib.rs — AEZAKMI Pro v3.3.0
 
 use tauri::Manager;
 use tauri::Emitter;
@@ -280,7 +280,7 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_shell::init())
         .setup(|app| {
-            println!("[STARTUP] AEZAKMI Pro v3.2.5");
+            println!("[STARTUP] AEZAKMI Pro v3.3.0");
             
             // Camoufox скачивается пользователем через UI при первом запуске
             // Playwright больше не используется
@@ -312,7 +312,9 @@ pub fn run() {
             get_playwright_version,
             update_playwright_runtime,
             check_camoufox_installed,
-            download_camoufox
+            download_camoufox,
+            proxys_api_request,
+            psb_api_request
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application")
@@ -732,6 +734,235 @@ async fn check_and_install_playwright() -> Result<String, String> {
     } else {
         Ok(format!("Некоторые компоненты отсутствуют:\n{}", status.join("\n")))
     }
+}
+
+// ============================================================================
+// PROXYS.IO API PROXY
+// ============================================================================
+// Proxys.io не отдаёт CORS-заголовки (а OPTIONS /buy отвечает 405), поэтому
+// прямой fetch из webview блокируется браузером. Все запросы идут через Rust.
+
+const PROXYS_API_BASE: &str = "https://proxys.world/api/v2";
+
+/// Универсальный проксирующий запрос к API Proxys.io.
+/// method: "GET" | "POST"; path: например "/balance" или "/services".
+/// query: параметры строки запроса; body: JSON-тело для POST.
+/// Возвращает распарсенный JSON — как при успехе, так и при ошибке API
+/// (у Proxys.io ошибки приходят с HTTP 400 и телом {"success":false,"error":{...}}).
+#[tauri::command]
+async fn proxys_api_request(
+    method: String,
+    path: String,
+    query: Option<HashMap<String, String>>,
+    body: Option<serde_json::Value>,
+) -> Result<serde_json::Value, String> {
+    let mut url = format!("{}{}", PROXYS_API_BASE, path);
+
+    if let Some(params) = &query {
+        if !params.is_empty() {
+            let qs: Vec<String> = params
+                .iter()
+                .map(|(k, v)| format!("{}={}", urlencode(k), urlencode(v)))
+                .collect();
+            url = format!("{}?{}", url, qs.join("&"));
+        }
+    }
+
+    // Ключ не логируем — в url он присутствует как query-параметр
+    println!("[PROXYS] {} {}", method, path);
+
+    let client = reqwest::Client::builder()
+        .connect_timeout(std::time::Duration::from_secs(20))
+        .timeout(std::time::Duration::from_secs(60))
+        .build()
+        .map_err(|e| format!("HTTP клиент: {}", e))?;
+
+    let request = match method.to_uppercase().as_str() {
+        "POST" => {
+            let payload = body.unwrap_or(serde_json::json!({}));
+            client
+                .post(&url)
+                .header("Content-Type", "application/json")
+                .body(serde_json::to_string(&payload).map_err(|e| format!("JSON: {}", e))?)
+        }
+        "GET" => client.get(&url),
+        other => return Err(format!("Неподдерживаемый метод: {}", other)),
+    };
+
+    let response = request
+        .header("Accept", "application/json")
+        .header("User-Agent", "AEZAKMI-Pro")
+        .send()
+        .await
+        .map_err(|e| {
+            eprintln!("[PROXYS] ✗ сеть: {}", e);
+            format!("Нет связи с Proxys.io: {}", e)
+        })?;
+
+    let status = response.status();
+    let text = response.text().await.map_err(|e| {
+        eprintln!("[PROXYS] ✗ чтение ответа: {}", e);
+        format!("Ошибка чтения ответа: {}", e)
+    })?;
+
+    println!(
+        "[PROXYS] ← HTTP {} ({} байт): {}",
+        status.as_u16(),
+        text.len(),
+        text.chars().take(160).collect::<String>()
+    );
+
+    match serde_json::from_str::<serde_json::Value>(&text) {
+        // Тело с ошибкой API отдаём фронтенду как есть — там разбирается error.message
+        Ok(json) => Ok(json),
+        Err(_) => Err(format!(
+            "Proxys.io вернул неожиданный ответ (HTTP {}): {}",
+            status.as_u16(),
+            text.chars().take(200).collect::<String>()
+        )),
+    }
+}
+
+// ============================================================================
+// PSB PROXY API PROXY
+// ============================================================================
+// psbproxy.io отдаёт Access-Control-Allow-Origin: https://psbproxy.io —
+// жёстко зашитый origin, поэтому из webview запросы тоже не проходят.
+
+const PSB_API_BASE: &str = "https://psbproxy.io";
+
+/// Запрос к API PSB Proxy.
+/// Авторизация — заголовок `Authorization: Bearer <token>`.
+/// Тело бывает двух видов: JSON (available_states/cities/asns) и
+/// multipart/form-data (generate-proxy-list, rotate-ip) — как в их Postman-коллекции.
+#[tauri::command]
+async fn psb_api_request(
+    method: String,
+    path: String,
+    token: String,
+    query: Option<HashMap<String, String>>,
+    json_body: Option<serde_json::Value>,
+    form_body: Option<HashMap<String, String>>,
+) -> Result<serde_json::Value, String> {
+    let mut url = format!("{}{}", PSB_API_BASE, path);
+
+    if let Some(params) = &query {
+        if !params.is_empty() {
+            let qs: Vec<String> = params
+                .iter()
+                .map(|(k, v)| format!("{}={}", urlencode(k), urlencode(v)))
+                .collect();
+            url = format!("{}?{}", url, qs.join("&"));
+        }
+    }
+
+    println!("[PSB] {} {}", method, path);
+
+    let client = reqwest::Client::builder()
+        .connect_timeout(std::time::Duration::from_secs(20))
+        .timeout(std::time::Duration::from_secs(120))
+        .build()
+        .map_err(|e| format!("HTTP клиент: {}", e))?;
+
+    let mut request = match method.to_uppercase().as_str() {
+        "POST" => client.post(&url),
+        "PUT" => client.put(&url),
+        "DELETE" => client.delete(&url),
+        "GET" => client.get(&url),
+        other => return Err(format!("Неподдерживаемый метод: {}", other)),
+    };
+
+    // Токен уже приходит с префиксом Bearer, если пользователь его указал
+    let auth = if token.to_lowercase().starts_with("bearer ") {
+        token.clone()
+    } else {
+        format!("Bearer {}", token)
+    };
+    request = request.header("Authorization", auth);
+
+    if let Some(json) = json_body {
+        request = request
+            .header("Content-Type", "application/json")
+            .body(serde_json::to_string(&json).map_err(|e| format!("JSON: {}", e))?);
+    } else if let Some(form) = form_body {
+        // Собираем multipart вручную — так же, как это делает их Postman-коллекция
+        const BOUNDARY: &str = "----AEZAKMIFormBoundary7MA4YWxkTrZu0gW";
+        let mut body = String::new();
+        for (key, value) in &form {
+            body.push_str(&format!("--{}\r\n", BOUNDARY));
+            body.push_str(&format!(
+                "Content-Disposition: form-data; name=\"{}\"\r\n\r\n",
+                key
+            ));
+            body.push_str(value);
+            body.push_str("\r\n");
+        }
+        body.push_str(&format!("--{}--\r\n", BOUNDARY));
+
+        request = request
+            .header(
+                "Content-Type",
+                format!("multipart/form-data; boundary={}", BOUNDARY),
+            )
+            .body(body);
+    }
+
+    let response = request
+        .header("Accept", "application/json")
+        .header("User-Agent", "AEZAKMI-Pro")
+        .send()
+        .await
+        .map_err(|e| {
+            eprintln!("[PSB] ✗ сеть: {}", e);
+            format!("Нет связи с PSB Proxy: {}", e)
+        })?;
+
+    let status = response.status();
+    let text = response.text().await.map_err(|e| {
+        eprintln!("[PSB] ✗ чтение ответа: {}", e);
+        format!("Ошибка чтения ответа: {}", e)
+    })?;
+
+    println!(
+        "[PSB] ← HTTP {} ({} байт): {}",
+        status.as_u16(),
+        text.len(),
+        text.chars().take(160).collect::<String>()
+    );
+
+    match serde_json::from_str::<serde_json::Value>(&text) {
+        Ok(json) => {
+            // У PSB ошибки приходят как {"message":"..."} с кодом 4xx —
+            // сообщаем о них явно, иначе фронтенд примет их за данные
+            if !status.is_success() {
+                let message = json
+                    .get("message")
+                    .and_then(|m| m.as_str())
+                    .unwrap_or("неизвестная ошибка");
+                return Err(format!("PSB Proxy: {} (HTTP {})", message, status.as_u16()));
+            }
+            Ok(json)
+        }
+        Err(_) => Err(format!(
+            "PSB Proxy вернул неожиданный ответ (HTTP {}): {}",
+            status.as_u16(),
+            text.chars().take(200).collect::<String>()
+        )),
+    }
+}
+
+/// Минимальное percent-кодирование для query-параметров
+fn urlencode(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for b in s.bytes() {
+        match b {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
+                out.push(b as char)
+            }
+            _ => out.push_str(&format!("%{:02X}", b)),
+        }
+    }
+    out
 }
 
 // ============================================================================

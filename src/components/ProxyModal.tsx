@@ -122,7 +122,7 @@ const ProxyModal = ({ open, onOpenChange, onAdd }: ProxyModalProps) => {
   const enrichWithGeoIP = async (proxies: Proxy[]): Promise<Proxy[]> => {
     const enriched = await Promise.all(proxies.map(async (proxy) => {
       try {
-        // 1. Попытка извлечь страну из логина (формат SX.ORG: country-XX-state-...-city-...)
+        // 1. Попытка извлечь страну из логина (формат многих провайдеров: country-XX-state-...-city-...)
         const login = proxy.username || proxy.login || '';
         const countryMatch = login.match(/country-([A-Z]{2})/i);
         const stateMatch = login.match(/state-(\d+)/i);

@@ -8,9 +8,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Profile, Proxy, BrowserEngine, MobileEmulation, MOBILE_DEVICES, CookieEntry } from '@/types';
-import { Zap, Globe, Smartphone, Monitor, Upload, Trash2 } from 'lucide-react';
+import { Zap, Globe, Smartphone, Monitor, Upload, Trash2, Check } from 'lucide-react';
 import { toast } from 'sonner';
-import sxorgLogo from '@/assets/sxorg-logo.svg';
+import { ProxysLogo } from '@/components/ProxysLogo';
+import { PsbLogo } from '@/components/PsbLogo';
 import { useTranslation } from '@/lib/i18n';
 import { loadChecklistProgress } from '@/lib/checklistData';
 
@@ -21,10 +22,11 @@ interface ProfileModalProps {
   profile: Profile | null;
   proxies: Proxy[];
   folders?: string[]; // Список доступных папок
-  onOpenSXOrg?: () => void; // Callback для открытия SX.ORG интеграции
+  onOpenProxys?: () => void; // Callback для открытия интеграции Proxys.io
+  onOpenPsb?: () => void; // Callback для открытия интеграции PSB Proxy
 }
 
-const ProfileModal = ({ open, onOpenChange, onSave, profile, proxies, folders = [], onOpenSXOrg }: ProfileModalProps) => {
+const ProfileModal = ({ open, onOpenChange, onSave, profile, proxies, folders = [], onOpenProxys, onOpenPsb }: ProfileModalProps) => {
   const { t, locale } = useTranslation();
   const [formData, setFormData] = useState({
     name: '',
@@ -692,18 +694,66 @@ const ProfileModal = ({ open, onOpenChange, onSave, profile, proxies, folders = 
                   >
                     {t('profileModal.manualInput')}
                   </Button>
-                  {onOpenSXOrg && (
+                  {onOpenProxys && (
                     <Button
                       type="button"
                       size="sm"
                       variant="outline"
-                      onClick={onOpenSXOrg}
-                      className="bg-blue-100 border-2 border-blue-300 hover:border-blue-400 hover:bg-blue-200 px-3 py-2"
+                      onClick={onOpenProxys}
+                      className="bg-[#75C948]/10 border-2 border-[#75C948]/40 hover:border-[#75C948] hover:bg-[#75C948]/20 px-3 py-2"
                     >
-                      <img src={sxorgLogo} alt="SX.ORG" className="h-4 w-auto" style={{ minWidth: '48px' }} />
+                      <ProxysLogo size="sm" />
+                    </Button>
+                  )}
+                  {onOpenPsb && (
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      onClick={onOpenPsb}
+                      className="bg-[#5AA4AD]/10 border-2 border-[#5AA4AD]/40 hover:border-[#5AA4AD] hover:bg-[#5AA4AD]/20 px-3 py-2"
+                    >
+                      <PsbLogo size="sm" />
                     </Button>
                   )}
                 </div>
+
+                {/* Что сейчас назначено профилю — видно в любом режиме ввода */}
+                {formData.proxyHost && formData.proxyPort ? (
+                  <div className="flex items-center gap-2 p-3 rounded-lg bg-[#75C948]/10 border border-[#75C948]/40">
+                    <Check className="w-4 h-4 text-[#4e9a26] flex-shrink-0" />
+                    <div className="min-w-0 flex-1">
+                      <div className="text-sm font-semibold truncate">
+                        {formData.proxyType.toUpperCase()}://{formData.proxyHost}:{formData.proxyPort}
+                      </div>
+                      <div className="text-xs text-gray-600">
+                        {formData.proxyUsername
+                          ? `${formData.proxyUsername}:***`
+                          : t('common.noAuth')}
+                      </div>
+                    </div>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="ghost"
+                      onClick={() =>
+                        setFormData({
+                          ...formData,
+                          proxyHost: '',
+                          proxyPort: '',
+                          proxyUsername: '',
+                          proxyPassword: '',
+                        })
+                      }
+                    >
+                      {t('profileModal.clearProxy')}
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="p-3 rounded-lg bg-amber-50 border border-amber-200 text-sm text-amber-800">
+                    {t('profileModal.noProxySelected')}
+                  </div>
+                )}
 
                 {/* Выбор из списка */}
                 {proxyInputMode === 'select' && (
@@ -714,22 +764,45 @@ const ProfileModal = ({ open, onOpenChange, onSave, profile, proxies, folders = 
                         {t('profileModal.noSavedProxies')}
                       </div>
                     ) : (
-                      <div className="space-y-2 max-h-48 overflow-y-auto border rounded-lg p-2">
-                        {proxies.map((proxy, index) => (
-                          <button
-                            key={index}
-                            type="button"
-                            onClick={() => handleSelectProxy(index)}
-                            className="w-full text-left p-3 hover:bg-blue-50 rounded-lg border border-gray-200 transition-colors"
-                          >
-                            <div className="font-semibold text-sm">
-                              {proxy.type.toUpperCase()}://{proxy.host}:{proxy.port}
-                            </div>
-                            <div className="text-xs text-gray-600">
-                              {proxy.username ? `${proxy.username}:***` : t('common.noAuth')}
-                            </div>
-                          </button>
-                        ))}
+                      <div className="space-y-2 max-h-56 overflow-y-auto border rounded-lg p-2">
+                        {proxies.map((proxy, index) => {
+                          // Выбранным считаем тот, чьи адрес и порт уже лежат в форме
+                          const isSelected =
+                            formData.proxyHost === proxy.host &&
+                            formData.proxyPort === String(proxy.port || '');
+
+                          return (
+                            <button
+                              key={proxy.id || index}
+                              type="button"
+                              onClick={() => handleSelectProxy(index)}
+                              className={`w-full text-left p-3 rounded-lg border-2 transition-colors ${
+                                isSelected
+                                  ? 'border-[#75C948] bg-[#75C948]/10'
+                                  : 'border-gray-200 hover:bg-gray-50 hover:border-gray-300'
+                              }`}
+                            >
+                              <div className="flex items-center gap-2">
+                                {proxy.metadata?.countryCode && (
+                                  <span
+                                    className={`fi fi-${proxy.metadata.countryCode}`}
+                                    style={{ fontSize: '1.1em' }}
+                                  />
+                                )}
+                                <span className="font-semibold text-sm flex-1 truncate">
+                                  {proxy.name || `${proxy.host}:${proxy.port}`}
+                                </span>
+                                <span className="text-[10px] uppercase text-gray-500 border rounded px-1.5 py-0.5">
+                                  {proxy.type}
+                                </span>
+                                {isSelected && <Check className="w-4 h-4 text-[#4e9a26] flex-shrink-0" />}
+                              </div>
+                              <div className="text-xs text-gray-600 mt-1">
+                                {proxy.username ? `${proxy.username}:***` : t('common.noAuth')}
+                              </div>
+                            </button>
+                          );
+                        })}
                       </div>
                     )}
                   </div>

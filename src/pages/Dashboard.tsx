@@ -11,7 +11,8 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import ProfileModal from '@/components/ProfileModal';
 import ProxyModal from '@/components/ProxyModal';
-import SXOrgIntegration from '@/components/SXOrgIntegration';
+import ProxysIntegration from '@/components/ProxysIntegration';
+import PsbIntegration from '@/components/PsbIntegration';
 import UpdateDialog from '@/components/UpdateDialog';
 import CookieBotModal from '@/components/CookieBotModal';
 import ChecklistGuide from '@/components/ChecklistGuide';
@@ -20,8 +21,9 @@ import { Profile, Proxy, BrowserEngine, CookieEntry } from '@/types';
 import { launchProfile } from '@/lib/launchProfile';
 import { safeConfirm, safePrompt } from '@/lib/safeDialog';
 import { checkForUpdates, downloadUpdate, installUpdate, UpdateInfo, shouldAutoCheck, setLastUpdateCheck, isAutoUpdateEnabled, getCurrentVersion } from '@/lib/updater';
-import { getSXOrgApiKey, SXOrgClient } from '@/lib/sxorg-api';
-import sxorgLogo from '@/assets/sxorg-logo.svg';
+import { ProxysLogo } from '@/components/ProxysLogo';
+import { PsbLogo } from '@/components/PsbLogo';
+import { daysLeft } from '@/lib/proxys-api';
 
 const Dashboard = () => {
   const { t, locale, setLocale } = useTranslation();
@@ -32,13 +34,13 @@ const Dashboard = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
   const [isProxyModalOpen, setIsProxyModalOpen] = useState(false);
-  const [isSXOrgModalOpen, setIsSXOrgModalOpen] = useState(false);
+  const [isProxysModalOpen, setIsProxysModalOpen] = useState(false);
+  const [isPsbModalOpen, setIsPsbModalOpen] = useState(false);
   const [editingProfile, setEditingProfile] = useState<Profile | null>(null);
   const [folders, setFolders] = useState<string[]>([]);
   const [selectedFolder, setSelectedFolder] = useState<string | null>(null);
   const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null);
   const [showUpdateDialog, setShowUpdateDialog] = useState(false);
-  const [refreshingProxyIndex, setRefreshingProxyIndex] = useState<number | null>(null);
   // Cookie Robot
   const [cookieBotProfile, setCookieBotProfile] = useState<Profile | null>(null);
   const [isCookieBotModalOpen, setIsCookieBotModalOpen] = useState(false);
@@ -364,8 +366,32 @@ const Dashboard = () => {
       username: p.username || p.login || undefined,
       login: p.login || p.username || undefined,
     }));
-    saveProxies([...proxies, ...normalized]);
-    toast.success(t('proxies.addedCount', { count: newProxies.length }));
+
+    // Повторный импорт того же прокси обновляет запись, а не плодит дубли.
+    // Логин входит в ключ: у резидентных пулов (PSB) адрес и порт общие,
+    // а сессии различаются именно логином.
+    const keyOf = (p: Proxy) => `${p.type}://${p.host}:${p.port}#${p.username || ''}`;
+    const merged = [...proxies];
+    let added = 0;
+    let updated = 0;
+
+    for (const proxy of normalized) {
+      const existing = merged.findIndex(p => keyOf(p) === keyOf(proxy));
+      if (existing >= 0) {
+        merged[existing] = { ...merged[existing], ...proxy };
+        updated++;
+      } else {
+        merged.push(proxy);
+        added++;
+      }
+    }
+
+    saveProxies(merged);
+    toast.success(
+      updated > 0
+        ? t('proxies.addedAndUpdated', { added: String(added), updated: String(updated) })
+        : t('proxies.addedCount', { count: String(added) }),
+    );
     setIsProxyModalOpen(false);
   };
 
@@ -398,37 +424,6 @@ const Dashboard = () => {
         toast.error(t('proxies.testFailed', { host: proxy.host, port: proxy.port }));
       }
     }, 1500);
-  };
-
-  // Обновление IP прокси (для SX.ORG)
-  const handleRefreshProxyIP = async (index: number) => {
-    const proxy = proxies[index];
-
-    // Проверяем есть ли refresh_link в metadata
-    if (!proxy.metadata?.refresh_link) {
-      toast.error(t('proxies.noRefreshSupport'));
-      return;
-    }
-
-    setRefreshingProxyIndex(index);
-    toast.info(t('proxies.refreshingIP'));
-
-    try {
-      const apiKey = getSXOrgApiKey();
-      if (!apiKey) {
-        toast.error(t('proxies.apiKeyNotFound'));
-        return;
-      }
-
-      const client = new SXOrgClient(apiKey);
-      await client.refreshProxyIP(proxy.metadata.refresh_link);
-      toast.success(t('proxies.refreshSuccess'));
-    } catch (error: any) {
-      console.error('Refresh proxy error:', error);
-      toast.error(error.message || t('proxies.refreshError'));
-    } finally {
-      setRefreshingProxyIndex(null);
-    }
   };
 
   // Добавление папки
@@ -1019,11 +1014,18 @@ const Dashboard = () => {
               <h2 className="text-2xl font-bold">{t('proxies.title')}</h2>
               <div className="flex gap-2">
                 <Button
-                  onClick={() => setIsSXOrgModalOpen(true)}
+                  onClick={() => setIsProxysModalOpen(true)}
                   variant="outline"
-                  className="bg-blue-100 border-2 border-blue-300 hover:border-blue-400 hover:bg-blue-200 px-4 py-2.5 h-auto"
+                  className="bg-[#75C948]/10 border-2 border-[#75C948]/40 hover:border-[#75C948] hover:bg-[#75C948]/20 px-4 py-2.5 h-auto"
                 >
-                  <img src={sxorgLogo} alt="SX.ORG" className="h-5 w-auto" style={{ minWidth: '60px' }} />
+                  <ProxysLogo size="md" />
+                </Button>
+                <Button
+                  onClick={() => setIsPsbModalOpen(true)}
+                  variant="outline"
+                  className="bg-[#5AA4AD]/10 border-2 border-[#5AA4AD]/40 hover:border-[#5AA4AD] hover:bg-[#5AA4AD]/20 px-4 py-2.5 h-auto"
+                >
+                  <PsbLogo size="md" />
                 </Button>
                 <Button onClick={() => setIsProxyModalOpen(true)}>
                   <Plus className="w-4 h-4 mr-2" />
@@ -1053,28 +1055,10 @@ const Dashboard = () => {
                           {proxy.metadata?.countryCode && (
                             <span className={`fi fi-${proxy.metadata.countryCode}`} style={{ fontSize: '1.2em' }}></span>
                           )}
-                          {proxy.metadata?.proxy_type_id === 1 && (
-                            <div className="w-6 h-6 bg-gray-100 dark:bg-gray-700 rounded flex items-center justify-center flex-shrink-0">
-                              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                <path d="M5.83333 1.83337H11.1667V0.833374H5.83333V1.83337ZM12 2.66671V13.3334H13V2.66671H12ZM11.1667 14.1667H5.83333V15.1667H11.1667V14.1667ZM5 13.3334V2.66671H4V13.3334H5ZM5.83333 14.1667C5.3731 14.1667 5 13.7936 5 13.3334H4C4 14.3459 4.82081 15.1667 5.83333 15.1667V14.1667ZM12 13.3334C12 13.7936 11.6269 14.1667 11.1667 14.1667V15.1667C12.1792 15.1667 13 14.3459 13 13.3334H12ZM11.1667 1.83337C11.6269 1.83337 12 2.20647 12 2.66671H13C13 1.65419 12.1792 0.833374 11.1667 0.833374V1.83337ZM5.83333 0.833374C4.82081 0.833374 4 1.65418 4 2.66671H5C5 2.20647 5.3731 1.83337 5.83333 1.83337V0.833374Z" fill="#87898F" />
-                                <path d="M7.16675 12.8334H9.83341" stroke="#87898F" strokeMiterlimit="1.02018" strokeLinecap="round" strokeLinejoin="round" />
-                                <path d="M8.5 3H8.50667" stroke="#87898F" strokeMiterlimit="1.02018" strokeLinecap="round" strokeLinejoin="round" />
-                              </svg>
-                            </div>
-                          )}
-                          {proxy.metadata?.proxy_type_id === 2 && (
-                            <div className="w-6 h-6 bg-gray-100 dark:bg-gray-700 rounded flex items-center justify-center flex-shrink-0">
-                              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                <path d="M14 12.6667V7.31878C14 6.90732 13.81 6.51892 13.4853 6.26631L8.81859 2.63668C8.33711 2.26219 7.66289 2.26219 7.18141 2.63668L2.51475 6.26631C2.18996 6.51892 2 6.90732 2 7.31878V12.6667C2 13.403 2.59695 14 3.33333 14H5.16667C5.90305 14 6.5 13.403 6.5 12.6667V10.8333C6.5 10.097 7.09695 9.5 7.83333 9.5H8.16667C8.90305 9.5 9.5 10.097 9.5 10.8333V12.6667C9.5 13.403 10.097 14 10.8333 14H12.6667C13.403 14 14 13.403 14 12.6667Z" stroke="#87898F" strokeLinejoin="round" />
-                              </svg>
-                            </div>
-                          )}
-                          {proxy.metadata?.proxy_type_id === 4 && (
-                            <div className="w-6 h-6 bg-gray-100 dark:bg-gray-700 rounded flex items-center justify-center flex-shrink-0">
-                              <svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                <path d="M12.8125 4.375V5.5M10 4.375V5.5M7.1875 4.375V5.5M12.8125 8.125V9.25M10 8.125V9.25M7.1875 8.125V9.25M12.8125 11.875V13M10 11.875V13M7.1875 11.875V13M5.5 16.75H14.5C15.1904 16.75 15.75 16.1904 15.75 15.5V6.3125C15.75 5.62215 15.1904 5.0625 14.5 5.0625H5.5C4.80964 5.0625 4.25 5.62215 4.25 6.3125V15.5C4.25 16.1904 4.80964 16.75 5.5 16.75Z" stroke="#87898F" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-                              </svg>
-                            </div>
+                          {proxy.metadata?.ip_version && (
+                            <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-[#75C948]/15 text-[#4e9a26]">
+                              IPv{proxy.metadata.ip_version}
+                            </span>
                           )}
                           {proxy.name || `${proxy.type.toUpperCase()}://${proxy.host}:${proxy.port}`}
                         </div>
@@ -1086,20 +1070,12 @@ const Dashboard = () => {
                         <Badge variant={proxy.status === 'working' ? 'default' : proxy.status === 'failed' ? 'destructive' : 'secondary'}>
                           {proxy.status === 'working' ? t('proxies.working') : proxy.status === 'failed' ? t('proxies.failed') : t('proxies.unchecked')}
                         </Badge>
-                        {proxy.metadata?.refresh_link && (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => handleRefreshProxyIP(index)}
-                            disabled={refreshingProxyIndex === index}
-                            title={t('proxies.refreshIP')}
-                          >
-                            {refreshingProxyIndex === index ? (
-                              <RefreshCw className="w-4 h-4 animate-spin" />
-                            ) : (
-                              <RefreshCw className="w-4 h-4" />
-                            )}
-                          </Button>
+                        {proxy.metadata?.expires_at && (
+                          <Badge variant={daysLeft(proxy.metadata.expires_at) <= 3 ? 'destructive' : 'secondary'}>
+                            {daysLeft(proxy.metadata.expires_at) > 0
+                              ? t('proxies.expiresIn', { days: String(daysLeft(proxy.metadata.expires_at)) })
+                              : t('proxies.expired')}
+                          </Badge>
                         )}
                         <Button
                           size="sm"
@@ -1307,9 +1283,9 @@ const Dashboard = () => {
           </div>
         )}
         {activeView === 'checklist' && (
-          <ChecklistGuide onOpenSXOrg={() => {
+          <ChecklistGuide onOpenProxys={() => {
             setActiveView('proxies');
-            setIsSXOrgModalOpen(true);
+            setIsProxysModalOpen(true);
           }} />
         )}
       </main>
@@ -1322,7 +1298,8 @@ const Dashboard = () => {
         profile={editingProfile}
         proxies={proxies}
         folders={folders}
-        onOpenSXOrg={() => setIsSXOrgModalOpen(true)}
+        onOpenProxys={() => setIsProxysModalOpen(true)}
+        onOpenPsb={() => setIsPsbModalOpen(true)}
       />
 
       <ProxyModal
@@ -1331,9 +1308,15 @@ const Dashboard = () => {
         onAdd={handleAddProxies}
       />
 
-      <SXOrgIntegration
-        open={isSXOrgModalOpen}
-        onClose={() => setIsSXOrgModalOpen(false)}
+      <ProxysIntegration
+        open={isProxysModalOpen}
+        onClose={() => setIsProxysModalOpen(false)}
+        onProxiesImported={handleAddProxies}
+      />
+
+      <PsbIntegration
+        open={isPsbModalOpen}
+        onClose={() => setIsPsbModalOpen(false)}
         onProxiesImported={handleAddProxies}
       />
 

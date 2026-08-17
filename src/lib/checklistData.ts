@@ -8,7 +8,7 @@ export interface ChecklistService {
   brandColor: string;
   brandLetter: string;
   url: string;
-  isSXOrgIntegration?: boolean;
+  isProxysIntegration?: boolean;
   description: { ru: string; en: string };
   instruction: { ru: string[]; en: string[] };
 }
@@ -340,8 +340,8 @@ export const checklistSteps: ChecklistStep[] = [
         url: '',
         description: { ru: 'Самостоятельный прогрев аккаунта в AEZAKMI.', en: 'Manual account warming in AEZAKMI.' },
         instruction: {
-          ru: ['Создайте профиль в AEZAKMI', 'Назначьте резидентный прокси (SX.ORG)', 'Зарегистрируйте аккаунт FB через профиль', 'Прогревайте 3-7 дней: лайки, посты, друзья', 'Создайте бизнес-менеджер и рекламный кабинет', 'Привяжите виртуальную карту'],
-          en: ['Create profile in AEZAKMI', 'Assign residential proxy (SX.ORG)', 'Register FB account through profile', 'Warm up 3-7 days: likes, posts, friends', 'Create Business Manager and ad account', 'Link a virtual card'],
+          ru: ['Создайте профиль в AEZAKMI', 'Назначьте прокси нужного ГЕО (Proxys.io)', 'Зарегистрируйте аккаунт FB через профиль', 'Прогревайте 3-7 дней: лайки, посты, друзья', 'Создайте бизнес-менеджер и рекламный кабинет', 'Привяжите виртуальную карту'],
+          en: ['Create profile in AEZAKMI', 'Assign a proxy in the right GEO (Proxys.io)', 'Register FB account through profile', 'Warm up 3-7 days: likes, posts, friends', 'Create Business Manager and ad account', 'Link a virtual card'],
         },
       },
     ],
@@ -360,33 +360,33 @@ export const checklistSteps: ChecklistStep[] = [
       ru: [
         'Прокси маскируют твой IP и создают видимость работы из другой страны. Без прокси аккаунты будут быстро заблокированы.',
         'Типы: резидентные (IP реальных людей) - лучше всего для FB. Мобильные - для агрессивного залива.',
-        'SX.ORG встроен прямо в AEZAKMI! Вставь API-ключ → выбери страну → купи прокси → они добавятся автоматически.',
+        'Proxys.io встроен прямо в AEZAKMI! Вставь API-ключ → выбери тип и страну → купи прокси → они добавятся автоматически.',
         'Один профиль = один прокси. Не используй один прокси на несколько аккаунтов.',
         'Совет: выбирай ГЕО прокси = ГЕО оффера. Если льёшь на Бразилию - прокси из Бразилии.',
       ],
       en: [
         'Proxies mask your IP and simulate browsing from another country. Without proxies, accounts get banned quickly.',
         'Types: residential (real people\'s IPs) - best for FB. Mobile - for aggressive campaigns.',
-        'SX.ORG is built into AEZAKMI! Insert API key → select country → buy → proxies auto-add.',
+        'Proxys.io is built into AEZAKMI! Insert API key → pick type & country → buy → proxies auto-add.',
         'One profile = one proxy. Don\'t use one proxy for multiple accounts.',
         'Tip: proxy GEO should match offer GEO. If targeting Brazil - use Brazilian proxies.',
       ],
     },
-    inputLabel: { ru: 'API-ключ SX.ORG', en: 'SX.ORG API Key' },
+    inputLabel: { ru: 'API-ключ Proxys.io', en: 'Proxys.io API Key' },
     inputPlaceholder: { ru: 'Вставьте ваш API-ключ', en: 'Paste your API key' },
     services: [
       {
-        id: 'sxorg',
-        name: 'SX.ORG',
-        domain: 'sx.org',
-        brandColor: '#2196F3',
-        brandLetter: 'SX',
-        url: 'https://sx.org/?ref=aezakmi',
-        isSXOrgIntegration: true,
-        description: { ru: 'Резидентные и мобильные прокси. Встроены в AEZAKMI!', en: 'Residential & mobile proxies. Built into AEZAKMI!' },
+        id: 'proxys',
+        name: 'Proxys.io',
+        domain: 'proxys.io',
+        brandColor: '#75C948',
+        brandLetter: 'PX',
+        url: 'https://proxys.world/?refid=426237',
+        isProxysIntegration: true,
+        description: { ru: 'IPv4/IPv6 прокси, 80+ стран. Встроены в AEZAKMI!', en: 'IPv4/IPv6 proxies, 80+ countries. Built into AEZAKMI!' },
         instruction: {
-          ru: ['Нажмите «Открыть SX.ORG» ниже', 'Получите API-ключ на sx.org', 'Вставьте ключ в AEZAKMI', 'Выберите страну и тип прокси', 'Купите → прокси добавятся автоматически', 'Назначьте прокси профилю'],
-          en: ['Click "Open SX.ORG" below', 'Get API key at sx.org', 'Paste key into AEZAKMI', 'Select country & type', 'Purchase → auto-added to list', 'Assign proxy to profile'],
+          ru: ['Нажмите «Открыть Proxys.io» ниже', 'Зарегистрируйтесь и пополните баланс', 'Скопируйте API-ключ в разделе «Настройки → API»', 'Вставьте ключ в AEZAKMI', 'Выберите тип прокси, страну и срок', 'Купите → прокси добавятся автоматически'],
+          en: ['Click "Open Proxys.io" below', 'Sign up and top up your balance', 'Copy the API key from "Settings → API"', 'Paste the key into AEZAKMI', 'Pick proxy type, country and period', 'Purchase → auto-added to list'],
         },
       },
     ],

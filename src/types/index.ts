@@ -15,13 +15,18 @@ export interface Proxy {
   // Для локального туннеля
   tunnelPort?: number;
   tunnelActive?: boolean;
-  // Метаданные для интеграций (SX.ORG и др.)
+  // Метаданные для интеграций (Proxys.io и др.)
   metadata?: {
-    sxorg_id?: number;
-    refresh_link?: string;
+    /** Номер заказа в Proxys.io — по нему прокси можно продлить */
+    proxys_order_id?: number;
     country?: string;
-    state?: string;
-    city?: string;
+    countryCode?: string;
+    /** Название тарифа, по которому куплен прокси */
+    service?: string;
+    /** 4 или 6 */
+    ip_version?: string | number;
+    /** Unix-таймстамп окончания аренды */
+    expires_at?: number;
     [key: string]: any;
   };
 }

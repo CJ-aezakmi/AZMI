@@ -13,8 +13,8 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
-import sxorgLogo from '@/assets/sxorg-logo.svg';
-import { getSXOrgApiKey } from '@/lib/sxorg-api';
+import { ProxysLogo } from '@/components/ProxysLogo';
+import { getProxysApiKey } from '@/lib/proxys-api';
 import ExtendedGuideModal from '@/components/ExtendedGuideModal';
 import { extendedGuides } from '@/lib/extendedGuides';
 import {
@@ -27,7 +27,7 @@ import {
 
 /* ── props ── */
 interface ChecklistGuideProps {
-  onOpenSXOrg?: () => void;
+  onOpenProxys?: () => void;
 }
 
 /* ── confetti ── */
@@ -97,12 +97,12 @@ const Favicon = ({ service, size = 32 }: { service: ChecklistService; size?: num
 
 /* ── Service card ── */
 const ServiceCard = ({
-  service, stepColor, index, locale, l, lArr, onOpenSXOrg, onOpenGuide,
+  service, stepColor, index, locale, l, lArr, onOpenProxys, onOpenGuide,
 }: {
   service: ChecklistService; stepColor: string; index: number; locale: string;
   l: (o: { ru: string; en: string }) => string;
   lArr: (o: { ru: string[]; en: string[] }) => string[];
-  onOpenSXOrg?: () => void;
+  onOpenProxys?: () => void;
   onOpenGuide?: (serviceId: string) => void;
 }) => {
   const [expanded, setExpanded] = useState(false);
@@ -150,11 +150,11 @@ const ServiceCard = ({
               <div className="px-4 pb-4 space-y-3">
                 <div className="h-px bg-gradient-to-r from-transparent via-gray-200 to-transparent" />
                 <div className="flex gap-2 flex-wrap">
-                  {service.isSXOrgIntegration && onOpenSXOrg ? (
-                    <Button size="sm" className="bg-blue-600 hover:bg-blue-700 text-white shadow-lg shadow-blue-600/20 font-semibold"
-                      onClick={onOpenSXOrg}>
-                      <img src={sxorgLogo} alt="" className="h-3.5 w-auto mr-1.5" />
-                      {locale === 'ru' ? 'Открыть SX.ORG' : 'Open SX.ORG'}
+                  {service.isProxysIntegration && onOpenProxys ? (
+                    <Button size="sm" className="bg-[#75C948] hover:bg-[#64b23c] text-white shadow-lg shadow-[#75C948]/25 font-semibold"
+                      onClick={onOpenProxys}>
+                      {locale === 'ru' ? 'Открыть' : 'Open'}
+                      <ProxysLogo size="sm" className="ml-1.5" />
                     </Button>
                   ) : service.url ? (
                     <Button size="sm" className="text-white font-semibold shadow-md"
@@ -331,7 +331,7 @@ const CookieUploadSection = ({
 };
 
 /* ── Proxy Status Indicator ── */
-const ProxyStatus = ({ hasApiKey, locale, onOpenSXOrg }: { hasApiKey: boolean; locale: string; onOpenSXOrg?: () => void }) => (
+const ProxyStatus = ({ hasApiKey, locale, onOpenProxys }: { hasApiKey: boolean; locale: string; onOpenProxys?: () => void }) => (
   <div className={cn(
     'flex items-center gap-2 rounded-xl px-3 py-2.5 border',
     hasApiKey
@@ -351,12 +351,11 @@ const ProxyStatus = ({ hasApiKey, locale, onOpenSXOrg }: { hasApiKey: boolean; l
         <span className="text-xs font-medium text-amber-700 flex-1">
           {locale === 'ru' ? 'Требует настройки' : 'Needs setup'}
         </span>
-        {onOpenSXOrg && (
+        {onOpenProxys && (
           <button
-            onClick={onOpenSXOrg}
-            className="flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-semibold bg-blue-600 hover:bg-blue-700 text-white transition-colors shadow-sm"
+            onClick={onOpenProxys}
+            className="flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-semibold bg-[#75C948] hover:bg-[#64b23c] text-white transition-colors shadow-sm"
           >
-            <img src={sxorgLogo} alt="" className="h-3 w-auto" />
             {locale === 'ru' ? 'Настроить' : 'Configure'}
           </button>
         )}
@@ -479,7 +478,7 @@ const MyToolsPanel = ({
 
               {/* Proxy status */}
               {entry.step.isProxyStep && (
-                <ProxyStatus hasApiKey={!!getSXOrgApiKey()} locale={locale} />
+                <ProxyStatus hasApiKey={!!getProxysApiKey()} locale={locale} />
               )}
 
               {/* Uploaded images */}
@@ -533,7 +532,7 @@ const MyToolsPanel = ({
 /* ════════════════════════════════════════════════════════
    MAIN — ChecklistGuide
    ════════════════════════════════════════════════════════ */
-const ChecklistGuide = ({ onOpenSXOrg }: ChecklistGuideProps) => {
+const ChecklistGuide = ({ onOpenProxys }: ChecklistGuideProps) => {
   const { locale } = useTranslation();
   const l = (o: { ru: string; en: string }) => o[locale] || o.ru;
   const lArr = (o: { ru: string[]; en: string[] }) => o[locale] || o.ru;
@@ -548,7 +547,7 @@ const ChecklistGuide = ({ onOpenSXOrg }: ChecklistGuideProps) => {
   const [confetti, setConfetti] = useState(false);
   const [showTools, setShowTools] = useState(false);
   const [showGuide, setShowGuide] = useState(false);
-  const [sxOrgConfigured, setSxOrgConfigured] = useState(false);
+  const [proxysConfigured, setProxysConfigured] = useState(false);
   const [extGuideServiceId, setExtGuideServiceId] = useState<string | null>(null);
   const confettiTimer = useRef<ReturnType<typeof setTimeout>>();
 
@@ -560,7 +559,7 @@ const ChecklistGuide = ({ onOpenSXOrg }: ChecklistGuideProps) => {
 
   useEffect(() => { saveChecklistProgress(progress); }, [progress]);
 
-  useEffect(() => { setSxOrgConfigured(!!getSXOrgApiKey()); }, []);
+  useEffect(() => { setProxysConfigured(!!getProxysApiKey()); }, []);
 
   useEffect(() => {
     const v: Record<string, string> = {};
@@ -933,7 +932,7 @@ const ChecklistGuide = ({ onOpenSXOrg }: ChecklistGuideProps) => {
                   className="space-y-2">
                   {getVisibleServices().map((s, i) => (
                     <ServiceCard key={s.id} service={s} stepColor={current.color} index={i}
-                      locale={locale} l={l} lArr={lArr} onOpenSXOrg={onOpenSXOrg}
+                      locale={locale} l={l} lArr={lArr} onOpenProxys={onOpenProxys}
                       onOpenGuide={setExtGuideServiceId} />
                   ))}
                 </motion.div>
@@ -945,7 +944,7 @@ const ChecklistGuide = ({ onOpenSXOrg }: ChecklistGuideProps) => {
 
               {/* Proxy status indicator */}
               {current.isProxyStep && (
-                <ProxyStatus hasApiKey={sxOrgConfigured} locale={locale} onOpenSXOrg={onOpenSXOrg} />
+                <ProxyStatus hasApiKey={proxysConfigured} locale={locale} onOpenProxys={onOpenProxys} />
               )}
 
               {/* Regular input field */}
