@@ -1,4 +1,4 @@
-# AEZAKMI Pro v3.3.0
+# AEZAKMI Pro v3.3.1
 
 Antidetect browser with Camoufox engine (Firefox fork with native C++ fingerprint protection).
 
@@ -22,7 +22,7 @@ pnpm exec tauri dev
 pnpm exec tauri build
 ```
 
-Output: `src-tauri/target/release/bundle/nsis/AEZAKMI_3.3.0_x64-setup.exe`
+Output: `src-tauri/target/release/bundle/nsis/AEZAKMI_3.3.1_x64-setup.exe`
 
 ## Project Structure
 

@@ -16,7 +16,10 @@
 
 import { invoke } from '@tauri-apps/api/core';
 
-export const PSB_GET_PROXY_URL = 'https://www.aezakmi.app/?utm_source=psb';
+/** Регистрация и получение API-токена */
+export const PSB_GET_PROXY_URL = 'https://psbproxy.io/?utm_source=aezakmi';
+/** Пополнение баланса аккаунта PSB */
+export const PSB_WALLET_URL = 'https://psbproxy.io/account/wallet';
 export const PSB_SITE_URL = 'https://psbproxy.io';
 
 /** Идентификатор продукта = значение параметра `type` в API */

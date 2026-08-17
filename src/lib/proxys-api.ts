@@ -9,7 +9,7 @@ import { invoke } from '@tauri-apps/api/core';
 
 export const PROXYS_SITE_URL = 'https://proxys.world/?refid=426237';
 export const PROXYS_CABINET_URL = 'https://proxys.world/ru/user/settings/api?refid=426237';
-export const PROXYS_TOPUP_URL = 'https://proxys.world/ru/user/balance?refid=426237';
+export const PROXYS_TOPUP_URL = 'https://proxys.io/ru/my/balance/replenish';
 
 // ─── Типы ответов API ──────────────────────────────────────────────────
 

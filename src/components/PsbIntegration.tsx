@@ -12,6 +12,7 @@ import {
   getPsbToken,
   removePsbToken,
   PSB_GET_PROXY_URL,
+  PSB_WALLET_URL,
   type PsbProduct,
   type PsbProductId,
   type PsbPoolData,
@@ -216,7 +217,7 @@ const PsbIntegration = ({ open, onClose, onProxiesImported }: PsbIntegrationProp
           </div>
           <Button
             variant="outline"
-            onClick={() => shellOpen(PSB_GET_PROXY_URL)}
+            onClick={() => shellOpen(PSB_WALLET_URL)}
             style={{ borderColor: `${PSB_TEAL}80` }}
           >
             <ExternalLink className="w-4 h-4 mr-2" />

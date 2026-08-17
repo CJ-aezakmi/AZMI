@@ -2,7 +2,21 @@
 import { invoke } from '@tauri-apps/api/core';
 
 const GITHUB_REPO = 'CJ-aezakmi/AZMI';
-const CURRENT_VERSION = '3.3.0';
+const CURRENT_VERSION = '3.3.1';
+
+/**
+ * Числовой id репозитория. Адрес вида /repositories/{id} не зависит от имени
+ * владельца: он переживает переименование репозитория, передачу другому
+ * аккаунту и потерю исходного аккаунта — в отличие от /repos/{owner}/{name},
+ * который сломается, если владелец исчезнет и логин займёт кто-то другой.
+ */
+const GITHUB_REPO_ID = 1149171474;
+
+/** Источники релизов по убыванию надёжности — берём первый ответивший */
+const RELEASE_FEEDS = [
+  `https://api.github.com/repositories/${GITHUB_REPO_ID}/releases/latest`,
+  `https://api.github.com/repos/${GITHUB_REPO}/releases/latest`,
+];
 
 export interface UpdateInfo {
   available: boolean;
@@ -23,17 +37,29 @@ export interface PlaywrightUpdateInfo {
  */
 export async function checkForUpdates(): Promise<UpdateInfo | null> {
   try {
-    const response = await fetch(`https://api.github.com/repos/${GITHUB_REPO}/releases/latest`, {
-      headers: { 'Accept': 'application/vnd.github.v3+json' },
-      signal: AbortSignal.timeout(10000)
-    });
-
-    if (!response.ok) {
-      console.error('Failed to check for updates:', response.statusText);
-      return null;
+    // Перебираем источники: если репозиторий переехал, первый адрес всё равно
+    // ответит, а второй остаётся на случай, если id почему-то недоступен
+    let release: any = null;
+    for (const feed of RELEASE_FEEDS) {
+      try {
+        const response = await fetch(feed, {
+          headers: { 'Accept': 'application/vnd.github.v3+json' },
+          signal: AbortSignal.timeout(10000)
+        });
+        if (response.ok) {
+          release = await response.json();
+          break;
+        }
+        console.warn('Update feed answered', response.status, feed);
+      } catch (feedError) {
+        console.warn('Update feed unreachable:', feed, feedError);
+      }
     }
 
-    const release = await response.json();
+    if (!release) {
+      console.error('Failed to check for updates: no feed responded');
+      return null;
+    }
     const latestVersion = release.tag_name.replace(/^v/, '');
     const isNewer = compareVersions(latestVersion, CURRENT_VERSION) > 0;
 
