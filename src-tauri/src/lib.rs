@@ -100,18 +100,86 @@ fn get_modules_dir() -> Result<std::path::PathBuf, String> {
 }
 
 // ============================================================================
-// CAMOUFOX: Проверка и скачивание антидетект-браузера
+// CAMOUFOX: установка и автообновление антидетект-браузера
 // ============================================================================
+//
+// Раскладка в %LOCALAPPDATA%/AEZAKMI Pro/camoufox/:
+//   version.json            — {"version": "159.0-beta.43", "exe": "159.0-beta.43/camoufox.exe"}
+//   <version>/camoufox.exe  — каждая версия в своей папке, поэтому обновление
+//                             можно качать, пока старая версия ещё запущена
+//   downloads/              — временные zip
+//
+// Сборки до 3.4 клали camoufox.exe прямо в корень camoufox/ — это «legacy»-
+// установка версии 135.0.1-beta.24, она распознаётся и заменяется при обновлении.
 
-const CAMOUFOX_VERSION: &str = "135.0.1-beta.24";
+const CAMOUFOX_REPO: &str = "daijro/camoufox";
+/// Числовой id репозитория — переживает переименование/передачу репозитория
+const CAMOUFOX_REPO_ID: u64 = 834082440;
+/// Версия, которую ставили старые сборки приложения (без version.json)
+const CAMOUFOX_LEGACY_VERSION: &str = "135.0.1-beta.24";
+/// Если GitHub API недоступен, а браузер ещё не установлен — ставим эту
+const CAMOUFOX_FALLBACK_VERSION: &str = "159.0-beta.43";
+const CAMOUFOX_ASSET_SUFFIX: &str = "-win.x86_64.zip";
+/// Примерный размер архива, если сервер не сообщил Content-Length
+const CAMOUFOX_APPROX_SIZE: u64 = 1_330_000_000;
+
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
+struct CamoufoxManifest {
+    version: String,
+    /// Путь к camoufox.exe относительно папки camoufox/
+    exe: String,
+    #[serde(default)]
+    installed_at: u64,
+}
+
+#[derive(serde::Serialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+struct CamoufoxStatus {
+    installed: bool,
+    version: Option<String>,
+    exe_path: Option<String>,
+    /// Установка старого образца (exe в корне, без version.json)
+    legacy: bool,
+}
+
+#[derive(Clone, Debug)]
+struct CamoufoxRelease {
+    version: String,
+    download_url: String,
+    size_mb: u64,
+}
+
+#[derive(serde::Serialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+struct CamoufoxUpdateInfo {
+    installed_version: Option<String>,
+    latest_version: String,
+    update_available: bool,
+    size_mb: u64,
+}
 
 fn get_camoufox_dir() -> Result<std::path::PathBuf, String> {
     let data_dir = get_data_dir()?;
     Ok(data_dir.join("camoufox"))
 }
 
-fn get_camoufox_exe() -> Result<std::path::PathBuf, String> {
-    Ok(get_camoufox_dir()?.join("camoufox.exe"))
+fn camoufox_manifest_path(dir: &std::path::Path) -> std::path::PathBuf {
+    dir.join("version.json")
+}
+
+fn read_camoufox_manifest(dir: &std::path::Path) -> Option<CamoufoxManifest> {
+    let content = std::fs::read_to_string(camoufox_manifest_path(dir)).ok()?;
+    serde_json::from_str(&content).ok()
+}
+
+/// Пишет version.json атомарно: сначала во временный файл, потом rename
+fn write_camoufox_manifest(dir: &std::path::Path, manifest: &CamoufoxManifest) -> Result<(), String> {
+    let path = camoufox_manifest_path(dir);
+    let tmp = dir.join("version.json.tmp");
+    let json = serde_json::to_string_pretty(manifest).map_err(|e| format!("JSON: {}", e))?;
+    std::fs::write(&tmp, json).map_err(|e| format!("Не удалось записать {}: {}", tmp.display(), e))?;
+    std::fs::rename(&tmp, &path).map_err(|e| format!("Не удалось обновить {}: {}", path.display(), e))?;
+    Ok(())
 }
 
 /// Ищет camoufox.exe рекурсивно (может быть в подпапке после распаковки)
@@ -132,145 +200,535 @@ fn find_camoufox_exe(dir: &std::path::Path) -> Option<std::path::PathBuf> {
     None
 }
 
-#[tauri::command]
-fn check_camoufox_installed() -> Result<bool, String> {
-    let exe = get_camoufox_exe()?;
-    if exe.exists() {
-        return Ok(true);
-    }
-    // Проверяем в подпапках
-    let dir = get_camoufox_dir()?;
-    if dir.exists() {
-        if let Some(_) = find_camoufox_exe(&dir) {
-            return Ok(true);
+/// Что установлено сейчас. Порядок: version.json → legacy-exe в корне → поиск по подпапкам.
+fn camoufox_status() -> CamoufoxStatus {
+    let not_installed = CamoufoxStatus { installed: false, version: None, exe_path: None, legacy: false };
+    let dir = match get_camoufox_dir() {
+        Ok(d) => d,
+        Err(_) => return not_installed,
+    };
+
+    if let Some(manifest) = read_camoufox_manifest(&dir) {
+        let exe = dir.join(&manifest.exe);
+        if exe.exists() {
+            return CamoufoxStatus {
+                installed: true,
+                version: Some(manifest.version),
+                exe_path: Some(exe.display().to_string()),
+                legacy: false,
+            };
         }
     }
-    Ok(false)
+
+    let legacy_exe = dir.join("camoufox.exe");
+    if legacy_exe.exists() {
+        return CamoufoxStatus {
+            installed: true,
+            version: Some(CAMOUFOX_LEGACY_VERSION.to_string()),
+            exe_path: Some(legacy_exe.display().to_string()),
+            legacy: true,
+        };
+    }
+
+    if dir.exists() {
+        if let Some(found) = find_camoufox_exe(&dir) {
+            // Версия неизвестна — считаем устаревшей, обновление её заменит
+            return CamoufoxStatus {
+                installed: true,
+                version: None,
+                exe_path: Some(found.display().to_string()),
+                legacy: true,
+            };
+        }
+    }
+
+    not_installed
+}
+
+/// "159.0-beta.43" → (159, 0, 0, 43); "158.0.1-beta.41" → (158, 0, 1, 41);
+/// релиз без суффикса beta ("160.0") считается новее любой беты той же версии.
+fn parse_camoufox_version(version: &str) -> (u32, u32, u32, u32) {
+    let v = version.trim().trim_start_matches('v');
+    let (core, beta) = match v.split_once("-beta.") {
+        Some((core, beta)) => (core, beta.parse::<u32>().unwrap_or(0)),
+        None => (v, u32::MAX),
+    };
+    let mut parts = core.split('.').map(|p| p.parse::<u32>().unwrap_or(0));
+    (
+        parts.next().unwrap_or(0),
+        parts.next().unwrap_or(0),
+        parts.next().unwrap_or(0),
+        beta,
+    )
+}
+
+fn camoufox_version_newer(candidate: &str, installed: &str) -> bool {
+    parse_camoufox_version(candidate) > parse_camoufox_version(installed)
+}
+
+/// Команда без мигающего окна консоли в релизной сборке
+fn hidden_command(program: &str) -> std::process::Command {
+    let cmd = std::process::Command::new(program);
+    #[cfg(all(not(debug_assertions), target_os = "windows"))]
+    let cmd = {
+        use std::os::windows::process::CommandExt;
+        let mut c = cmd;
+        c.creation_flags(0x08000000); // CREATE_NO_WINDOW
+        c
+    };
+    cmd
+}
+
+/// Последний релиз Camoufox с GitHub (только непредварительные — так помечает сам автор)
+async fn fetch_latest_camoufox_release() -> Result<CamoufoxRelease, String> {
+    let feeds = [
+        format!("https://api.github.com/repositories/{}/releases/latest", CAMOUFOX_REPO_ID),
+        format!("https://api.github.com/repos/{}/releases/latest", CAMOUFOX_REPO),
+    ];
+
+    let client = reqwest::Client::builder()
+        .connect_timeout(std::time::Duration::from_secs(15))
+        .timeout(std::time::Duration::from_secs(30))
+        .build()
+        .map_err(|e| format!("HTTP клиент: {}", e))?;
+
+    let mut last_error = String::from("нет ответа");
+    for url in &feeds {
+        let response = match client
+            .get(url)
+            .header("User-Agent", "AEZAKMI-Pro")
+            .header("Accept", "application/vnd.github+json")
+            .send()
+            .await
+        {
+            Ok(r) => r,
+            Err(e) => {
+                last_error = e.to_string();
+                continue;
+            }
+        };
+        if !response.status().is_success() {
+            last_error = format!("HTTP {}", response.status());
+            continue;
+        }
+        let text = match response.text().await {
+            Ok(t) => t,
+            Err(e) => {
+                last_error = e.to_string();
+                continue;
+            }
+        };
+        let json: serde_json::Value = match serde_json::from_str(&text) {
+            Ok(j) => j,
+            Err(e) => {
+                last_error = format!("неверный JSON: {}", e);
+                continue;
+            }
+        };
+
+        let tag = json.get("tag_name").and_then(|v| v.as_str()).unwrap_or("");
+        let version = tag.trim_start_matches('v').to_string();
+        if version.is_empty() {
+            last_error = "в ответе нет tag_name".to_string();
+            continue;
+        }
+
+        let asset = json
+            .get("assets")
+            .and_then(|a| a.as_array())
+            .and_then(|assets| {
+                assets.iter().find(|a| {
+                    a.get("name").and_then(|n| n.as_str()).map(|n| n.ends_with(CAMOUFOX_ASSET_SUFFIX)).unwrap_or(false)
+                })
+            });
+
+        let asset = match asset {
+            Some(a) => a,
+            None => {
+                last_error = format!("в релизе v{} нет сборки для Windows x64", version);
+                continue;
+            }
+        };
+
+        let download_url = asset
+            .get("browser_download_url")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+        let size_mb = asset.get("size").and_then(|v| v.as_u64()).unwrap_or(0) / 1024 / 1024;
+
+        return Ok(CamoufoxRelease { version, download_url, size_mb });
+    }
+
+    Err(format!("Не удалось получить список релизов Camoufox: {}", last_error))
+}
+
+fn camoufox_release_for_version(version: &str) -> CamoufoxRelease {
+    CamoufoxRelease {
+        version: version.to_string(),
+        download_url: format!(
+            "https://github.com/{}/releases/download/v{}/camoufox-{}{}",
+            CAMOUFOX_REPO, version, version, CAMOUFOX_ASSET_SUFFIX
+        ),
+        size_mb: CAMOUFOX_APPROX_SIZE / 1024 / 1024,
+    }
+}
+
+/// Распаковка zip: tar из состава Windows 10+ в разы быстрее Expand-Archive,
+/// PowerShell остаётся запасным вариантом.
+fn extract_zip(zip_path: &std::path::Path, dest_dir: &std::path::Path) -> Result<(), String> {
+    std::fs::create_dir_all(dest_dir)
+        .map_err(|e| format!("Не удалось создать {}: {}", dest_dir.display(), e))?;
+
+    let system_root = std::env::var("SystemRoot").unwrap_or_else(|_| "C:\\Windows".to_string());
+    let tar = format!("{}\\System32\\tar.exe", system_root);
+    if std::path::Path::new(&tar).exists() {
+        let output = hidden_command(&tar)
+            .args(["-xf", &zip_path.display().to_string(), "-C", &dest_dir.display().to_string()])
+            .output();
+        match output {
+            Ok(o) if o.status.success() => return Ok(()),
+            Ok(o) => println!("[CAMOUFOX] tar не справился, пробуем PowerShell: {}", String::from_utf8_lossy(&o.stderr).trim()),
+            Err(e) => println!("[CAMOUFOX] tar не запустился ({}), пробуем PowerShell", e),
+        }
+    }
+
+    let ps_script = format!(
+        "Expand-Archive -Path '{}' -DestinationPath '{}' -Force",
+        zip_path.display(),
+        dest_dir.display()
+    );
+    let output = hidden_command("powershell")
+        .args(["-NoProfile", "-NonInteractive", "-Command", &ps_script])
+        .output()
+        .map_err(|e| format!("PowerShell: {}", e))?;
+    if !output.status.success() {
+        return Err(format!("Распаковка: {}", String::from_utf8_lossy(&output.stderr).trim()));
+    }
+    Ok(())
+}
+
+/// Запущен ли какой-нибудь процесс из папки camoufox (браузер пользователя)
+fn camoufox_in_use(dir: &std::path::Path) -> bool {
+    let dir_str = dir.display().to_string().replace('\'', "''");
+    let script = format!(
+        "@(Get-Process | Where-Object {{ $_.Path -and $_.Path.StartsWith('{}', [System.StringComparison]::OrdinalIgnoreCase) }}).Count",
+        dir_str
+    );
+    match hidden_command("powershell")
+        .args(["-NoProfile", "-NonInteractive", "-Command", &script])
+        .output()
+    {
+        Ok(o) if o.status.success() => {
+            String::from_utf8_lossy(&o.stdout).trim().parse::<u32>().map(|n| n > 0).unwrap_or(true)
+        }
+        // Не смогли проверить — считаем, что занят, чтобы ничего не сломать
+        _ => true,
+    }
+}
+
+/// Удаляет всё, кроме активной версии (старые версии, legacy-файлы в корне, временные zip).
+/// Ничего не трогает, пока из папки запущен браузер — повторит попытку при следующем старте.
+fn cleanup_old_camoufox(dir: &std::path::Path, keep_version: &str) {
+    if !dir.exists() {
+        return;
+    }
+    if camoufox_in_use(dir) {
+        println!("[CAMOUFOX] Браузер запущен — уборку старых версий откладываем");
+        return;
+    }
+    let entries = match std::fs::read_dir(dir) {
+        Ok(e) => e,
+        Err(_) => return,
+    };
+    let mut removed = 0;
+    for entry in entries.filter_map(|e| e.ok()) {
+        let name = entry.file_name().to_string_lossy().to_string();
+        if name == "version.json" || name == keep_version {
+            continue;
+        }
+        let path = entry.path();
+        let result = if path.is_dir() { std::fs::remove_dir_all(&path) } else { std::fs::remove_file(&path) };
+        if result.is_ok() {
+            removed += 1;
+        }
+    }
+    if removed > 0 {
+        println!("[CAMOUFOX] Удалено старых элементов: {}", removed);
+    }
+}
+
+/// Уборка при старте приложения — в фоне, чтобы не задерживать окно
+fn schedule_camoufox_cleanup() {
+    std::thread::spawn(|| {
+        if let Ok(dir) = get_camoufox_dir() {
+            if let Some(manifest) = read_camoufox_manifest(&dir) {
+                cleanup_old_camoufox(&dir, &manifest.version);
+            }
+        }
+    });
 }
 
 #[tauri::command]
-async fn download_camoufox(app: tauri::AppHandle) -> Result<String, String> {
+fn get_camoufox_status() -> CamoufoxStatus {
+    camoufox_status()
+}
+
+#[tauri::command]
+fn check_camoufox_installed() -> Result<bool, String> {
+    Ok(camoufox_status().installed)
+}
+
+/// Есть ли на GitHub версия новее установленной
+#[tauri::command]
+async fn check_camoufox_update() -> Result<CamoufoxUpdateInfo, String> {
+    let status = camoufox_status();
+    let latest = fetch_latest_camoufox_release().await?;
+
+    let update_available = match (&status.installed, &status.version) {
+        (true, Some(installed)) => camoufox_version_newer(&latest.version, installed),
+        // Установлен, но версия неизвестна (ручная распаковка) — обновляем
+        (true, None) => true,
+        (false, _) => true,
+    };
+
+    println!(
+        "[CAMOUFOX] Установлена: {} · на GitHub: {} · обновление: {}",
+        status.version.clone().unwrap_or_else(|| "нет".into()),
+        latest.version,
+        update_available
+    );
+
+    Ok(CamoufoxUpdateInfo {
+        installed_version: status.version,
+        latest_version: latest.version,
+        update_available,
+        size_mb: latest.size_mb,
+    })
+}
+
+/// Скачивает и устанавливает Camoufox. Без `version` берёт последний релиз.
+/// Прогресс — событие `camoufox-progress` {stage, percent, message, speed, version, mode}.
+#[tauri::command]
+async fn download_camoufox(app: tauri::AppHandle, version: Option<String>) -> Result<String, String> {
+    let status = camoufox_status();
+    let mode = if status.installed { "update" } else { "install" };
+
+    let emit = move |stage: &str, percent: i64, message: String, extra: serde_json::Value| {
+        let mut payload = serde_json::json!({
+            "stage": stage, "percent": percent, "message": message, "mode": mode
+        });
+        if let (Some(obj), Some(extra_obj)) = (payload.as_object_mut(), extra.as_object()) {
+            for (k, v) in extra_obj {
+                obj.insert(k.clone(), v.clone());
+            }
+        }
+        let _ = app.emit("camoufox-progress", payload);
+    };
+
+    // Какую версию ставим
+    let release = match version {
+        Some(v) => camoufox_release_for_version(v.trim_start_matches('v')),
+        None => match fetch_latest_camoufox_release().await {
+            Ok(r) => r,
+            Err(e) => {
+                if status.installed {
+                    println!("[CAMOUFOX] {} — оставляем установленную версию", e);
+                    emit("done", 100, "Camoufox уже установлен".into(), serde_json::json!({ "version": status.version }));
+                    return Ok("already_installed".to_string());
+                }
+                println!("[CAMOUFOX] {} — ставим встроенную версию {}", e, CAMOUFOX_FALLBACK_VERSION);
+                camoufox_release_for_version(CAMOUFOX_FALLBACK_VERSION)
+            }
+        },
+    };
+
+    if status.installed && !status.legacy && status.version.as_deref() == Some(release.version.as_str()) {
+        emit("done", 100, "Camoufox уже установлен".into(), serde_json::json!({ "version": release.version }));
+        return Ok("already_installed".to_string());
+    }
+
+    install_camoufox_release(&release, &status, &emit).await
+}
+
+/// Скачивание, распаковка в папку версии и переключение version.json.
+/// Вынесено из команды, чтобы прогонять без Tauri (см. тесты).
+async fn install_camoufox_release(
+    release: &CamoufoxRelease,
+    status: &CamoufoxStatus,
+    emit: &(dyn Fn(&str, i64, String, serde_json::Value) + Sync),
+) -> Result<String, String> {
     use futures_util::StreamExt;
-    
+    use std::io::Write;
+
     let camoufox_dir = get_camoufox_dir()?;
     std::fs::create_dir_all(&camoufox_dir)
         .map_err(|e| format!("Не удалось создать папку: {}", e))?;
-    
-    // Проверяем — может уже установлен
-    let exe = get_camoufox_exe()?;
-    if exe.exists() || find_camoufox_exe(&camoufox_dir).is_some() {
-        let _ = app.emit("camoufox-progress", serde_json::json!({
-            "stage": "done", "percent": 100, "message": "Camoufox уже установлен"
-        }));
-        return Ok("already_installed".to_string());
-    }
-    
-    let zip_name = format!("camoufox-{}-win.x86_64.zip", CAMOUFOX_VERSION);
-    let url = format!(
-        "https://github.com/daijro/camoufox/releases/download/v{}/{}",
-        CAMOUFOX_VERSION, zip_name
-    );
-    let zip_path = camoufox_dir.join(&zip_name);
-    
+
+    let version_extra = serde_json::json!({ "version": release.version });
+
     // === ЭТАП 1: СКАЧИВАНИЕ ===
-    let _ = app.emit("camoufox-progress", serde_json::json!({
-        "stage": "download", "percent": 0, "message": "Подключение к серверу..."
-    }));
-    
+    let downloads_dir = camoufox_dir.join("downloads");
+    std::fs::create_dir_all(&downloads_dir)
+        .map_err(|e| format!("Не удалось создать папку загрузок: {}", e))?;
+    let zip_path = downloads_dir.join(format!("camoufox-{}{}", release.version, CAMOUFOX_ASSET_SUFFIX));
+    let _ = std::fs::remove_file(&zip_path);
+
+    emit("download", 0, "Подключение к серверу...".into(), version_extra.clone());
+    println!("[CAMOUFOX] Скачивание v{} ({} MB): {}", release.version, release.size_mb, release.download_url);
+
     let client = reqwest::Client::builder()
         .redirect(reqwest::redirect::Policy::limited(10))
         .connect_timeout(std::time::Duration::from_secs(30))
-        // НЕ ставим .timeout() — это убивает долгие скачивания!
+        // Без общего .timeout(): архив больше гигабайта
         .build()
         .map_err(|e| format!("HTTP клиент: {}", e))?;
-    
-    let response = client.get(&url)
-        .header("User-Agent", "AEZAKMI/4.0")
+
+    let response = client
+        .get(&release.download_url)
+        .header("User-Agent", "AEZAKMI-Pro")
         .send()
         .await
         .map_err(|e| format!("Ошибка загрузки: {}", e))?;
-    
+
     if !response.status().is_success() {
-        return Err(format!("HTTP {}: {}", response.status(), url));
+        return Err(format!("HTTP {}: {}", response.status(), release.download_url));
     }
-    
-    let total_size = response.content_length().unwrap_or(530_000_000); // ~530MB
+
+    let total_size = response
+        .content_length()
+        .filter(|n| *n > 0)
+        .unwrap_or(if release.size_mb > 0 { release.size_mb * 1024 * 1024 } else { CAMOUFOX_APPROX_SIZE });
     let mut downloaded: u64 = 0;
-    let mut last_pct: i32 = -1;
+    let mut last_pct: i64 = -1;
     let start_time = std::time::Instant::now();
-    
+
     let mut file = std::fs::File::create(&zip_path)
         .map_err(|e| format!("Не удалось создать файл: {}", e))?;
-    
+
     let mut stream = response.bytes_stream();
-    
     while let Some(chunk_result) = stream.next().await {
         let chunk = chunk_result.map_err(|e| format!("Ошибка скачивания: {}", e))?;
-        use std::io::Write;
         file.write_all(&chunk).map_err(|e| format!("Ошибка записи: {}", e))?;
         downloaded += chunk.len() as u64;
-        
-        let pct = ((downloaded as f64 / total_size as f64) * 100.0) as i32;
+
+        let pct = ((downloaded as f64 / total_size as f64) * 100.0).min(99.0) as i64;
         if pct != last_pct {
             last_pct = pct;
             let mb = downloaded / 1024 / 1024;
             let total_mb = total_size / 1024 / 1024;
             let elapsed = start_time.elapsed().as_secs_f64();
             let speed_mbps = if elapsed > 0.0 { (downloaded as f64 / 1024.0 / 1024.0) / elapsed } else { 0.0 };
-            let _ = app.emit("camoufox-progress", serde_json::json!({
-                "stage": "download",
-                "percent": pct,
-                "message": format!("{} / {} MB", mb, total_mb),
-                "speed": format!("{:.1} MB/s", speed_mbps),
-                "downloaded": mb,
-                "totalMb": total_mb
-            }));
+            emit(
+                "download",
+                pct,
+                format!("{} / {} MB", mb, total_mb),
+                serde_json::json!({
+                    "speed": format!("{:.1} MB/s", speed_mbps),
+                    "downloaded": mb,
+                    "totalMb": total_mb,
+                    "version": release.version,
+                }),
+            );
         }
     }
-    
+    file.flush().map_err(|e| format!("Ошибка записи: {}", e))?;
     drop(file);
-    let total_elapsed = start_time.elapsed().as_secs();
-    println!("[CAMOUFOX] Скачано: {} MB за {} сек", downloaded / 1024 / 1024, total_elapsed);
-    
-    // === ЭТАП 2: РАСПАКОВКА ===
-    let _ = app.emit("camoufox-progress", serde_json::json!({
-        "stage": "extract", "percent": 0, "message": "Распаковка Camoufox..."
-    }));
-    
-    let zip_path_str = zip_path.display().to_string();
-    let dir_str = camoufox_dir.display().to_string();
-    
-    let output = std::process::Command::new("powershell")
-        .args([
-            "-NoProfile", "-Command",
-            &format!("Expand-Archive -Path '{}' -DestinationPath '{}' -Force", zip_path_str, dir_str)
-        ])
-        .output()
-        .map_err(|e| format!("PowerShell: {}", e))?;
-    
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(format!("Распаковка: {}", stderr));
+    println!("[CAMOUFOX] Скачано: {} MB за {} сек", downloaded / 1024 / 1024, start_time.elapsed().as_secs());
+
+    // === ЭТАП 2: РАСПАКОВКА в папку версии ===
+    emit("extract", 0, "Распаковка Camoufox...".into(), version_extra.clone());
+    let target_dir = camoufox_dir.join(&release.version);
+    if target_dir.exists() {
+        // Недораспакованный остаток прошлой попытки
+        let _ = std::fs::remove_dir_all(&target_dir);
     }
-    
-    // Удаляем zip
+
+    let extract_result = extract_zip(&zip_path, &target_dir);
     let _ = std::fs::remove_file(&zip_path);
-    
-    // Проверяем что exe существует
-    let found_exe = if exe.exists() {
-        exe.clone()
+    extract_result?;
+
+    let exe = if target_dir.join("camoufox.exe").exists() {
+        target_dir.join("camoufox.exe")
     } else {
-        find_camoufox_exe(&camoufox_dir)
+        find_camoufox_exe(&target_dir)
             .ok_or_else(|| "camoufox.exe не найден после распаковки".to_string())?
     };
-    
-    println!("[CAMOUFOX] Установлен: {:?}", found_exe);
-    
-    let _ = app.emit("camoufox-progress", serde_json::json!({
-        "stage": "done", "percent": 100, "message": "Camoufox установлен!"
-    }));
-    
-    Ok("installed".to_string())
+    let exe_rel = exe
+        .strip_prefix(&camoufox_dir)
+        .map_err(|_| "Неожиданный путь к camoufox.exe".to_string())?
+        .to_string_lossy()
+        .replace('\\', "/");
+
+    // === ЭТАП 3: ПЕРЕКЛЮЧЕНИЕ ===
+    let installed_at = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    write_camoufox_manifest(
+        &camoufox_dir,
+        &CamoufoxManifest { version: release.version.clone(), exe: exe_rel, installed_at },
+    )?;
+    println!("[CAMOUFOX] Установлен v{}: {}", release.version, exe.display());
+
+    emit("done", 100, format!("Camoufox {} установлен", release.version), version_extra);
+
+    // Старые версии убираем в фоне — если браузер запущен, уборка подождёт следующего старта
+    let keep = release.version.clone();
+    std::thread::spawn(move || cleanup_old_camoufox(&camoufox_dir, &keep));
+
+    Ok(if status.installed { "updated".to_string() } else { "installed".to_string() })
+}
+
+#[cfg(test)]
+mod camoufox_version_tests {
+    use super::*;
+
+    /// Сеть: последний релиз на GitHub и сборка для Windows x64 в нём
+    #[tokio::test]
+    #[ignore]
+    async fn fetches_latest_release() {
+        let release = fetch_latest_camoufox_release().await.expect("GitHub API");
+        println!("latest: {} {} MB {}", release.version, release.size_mb, release.download_url);
+        assert!(release.download_url.ends_with(CAMOUFOX_ASSET_SUFFIX));
+        assert!(camoufox_version_newer(&release.version, CAMOUFOX_LEGACY_VERSION));
+    }
+
+    /// Полная установка последней версии в реальный %LOCALAPPDATA% (≈1.3 ГБ)
+    #[tokio::test]
+    #[ignore]
+    async fn real_install_latest() {
+        let release = fetch_latest_camoufox_release().await.expect("GitHub API");
+        let status = camoufox_status();
+        let progress = |stage: &str, pct: i64, msg: String, _extra: serde_json::Value| {
+            if pct % 10 == 0 || stage != "download" {
+                println!("[{}] {}% {}", stage, pct, msg);
+            }
+        };
+        let result = install_camoufox_release(&release, &status, &progress).await.expect("install");
+        println!("result: {}", result);
+        let after = camoufox_status();
+        assert!(after.installed && !after.legacy);
+        assert_eq!(after.version.as_deref(), Some(release.version.as_str()));
+        assert!(std::path::Path::new(after.exe_path.as_ref().unwrap()).exists());
+    }
+
+    #[test]
+    fn parses_beta_versions() {
+        assert_eq!(parse_camoufox_version("159.0-beta.43"), (159, 0, 0, 43));
+        assert_eq!(parse_camoufox_version("v158.0.1-beta.41"), (158, 0, 1, 41));
+        assert_eq!(parse_camoufox_version("135.0.1-beta.24"), (135, 0, 1, 24));
+        assert_eq!(parse_camoufox_version("160.0"), (160, 0, 0, u32::MAX));
+    }
+
+    #[test]
+    fn compares_versions() {
+        assert!(camoufox_version_newer("159.0-beta.43", "135.0.1-beta.24"));
+        assert!(camoufox_version_newer("159.0-beta.43", "159.0-beta.42"));
+        assert!(camoufox_version_newer("160.0", "160.0-beta.50"));
+        assert!(!camoufox_version_newer("158.0.1-beta.41", "159.0-beta.43"));
+        assert!(!camoufox_version_newer("159.0-beta.43", "159.0-beta.43"));
+    }
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -282,8 +740,9 @@ pub fn run() {
         .setup(|app| {
             println!("[STARTUP] AEZAKMI Pro v3.3.1");
             
-            // Camoufox скачивается пользователем через UI при первом запуске
-            // Playwright больше не используется
+            // Camoufox скачивается и обновляется через UI; при старте подчищаем
+            // старые версии, если браузер сейчас не запущен
+            schedule_camoufox_cleanup();
             
             #[cfg(debug_assertions)]
             if let Some(window) = app.get_webview_window("main") {
@@ -312,6 +771,8 @@ pub fn run() {
             get_playwright_version,
             update_playwright_runtime,
             check_camoufox_installed,
+            get_camoufox_status,
+            check_camoufox_update,
             download_camoufox,
             proxys_api_request,
             psb_api_request

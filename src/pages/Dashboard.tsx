@@ -20,7 +20,17 @@ import { toast } from 'sonner';
 import { Profile, Proxy, BrowserEngine, CookieEntry } from '@/types';
 import { launchProfile } from '@/lib/launchProfile';
 import { safeConfirm, safePrompt } from '@/lib/safeDialog';
-import { checkForUpdates, downloadUpdate, installUpdate, UpdateInfo, shouldAutoCheck, setLastUpdateCheck, isAutoUpdateEnabled, getCurrentVersion } from '@/lib/updater';
+import { checkForUpdates, downloadUpdate, installUpdate, UpdateInfo, setLastUpdateCheck, isAutoUpdateEnabled, setAutoUpdateEnabled, getCurrentVersion } from '@/lib/updater';
+import {
+  getCamoufoxStatus,
+  checkCamoufoxUpdate,
+  downloadCamoufox as downloadCamoufoxCmd,
+  isCamoufoxAutoUpdateEnabled,
+  setCamoufoxAutoUpdateEnabled,
+  shouldCheckCamoufoxUpdate,
+  markCamoufoxUpdateCheck,
+  type CamoufoxUpdateInfo,
+} from '@/lib/camoufox';
 import { ProxysLogo } from '@/components/ProxysLogo';
 import { PsbLogo } from '@/components/PsbLogo';
 import { daysLeft } from '@/lib/proxys-api';
@@ -50,8 +60,15 @@ const Dashboard = () => {
   );
   // Camoufox download state
   const [camoufoxDownloading, setCamoufoxDownloading] = useState(false);
-  const [camoufoxProgress, setCamoufoxProgress] = useState({ stage: '', percent: 0, message: '', speed: '' });
+  const [camoufoxProgress, setCamoufoxProgress] = useState<{ stage: string; percent: number; message: string; speed?: string; version?: string }>({ stage: '', percent: 0, message: '' });
   const [camoufoxInstalled, setCamoufoxInstalled] = useState<boolean | null>(null);
+  const [camoufoxVersion, setCamoufoxVersion] = useState<string | null>(null);
+  const [camoufoxUpdate, setCamoufoxUpdate] = useState<CamoufoxUpdateInfo | null>(null);
+  /** install — первая установка с блокирующим оверлеем; update — фоновое обновление, профили можно запускать */
+  const [camoufoxMode, setCamoufoxMode] = useState<'install' | 'update'>('install');
+  const [camoufoxAutoUpdate, setCamoufoxAutoUpdate] = useState(isCamoufoxAutoUpdateEnabled);
+  const [camoufoxChecking, setCamoufoxChecking] = useState(false);
+  const [appAutoUpdate, setAppAutoUpdate] = useState(isAutoUpdateEnabled);
   const [funPhraseIndex, setFunPhraseIndex] = useState(0);
 
 
@@ -66,7 +83,7 @@ const Dashboard = () => {
       const parsed = JSON.parse(savedProfiles) as Profile[];
       const migrated = parsed.map((p: Profile) => ({
         ...p,
-        browserEngine: (p.browserEngine === 'chromium' || !p.browserEngine) ? 'camoufox' as BrowserEngine : p.browserEngine,
+        browserEngine: ((p.browserEngine as string) === 'chromium' || !p.browserEngine) ? 'camoufox' as BrowserEngine : p.browserEngine,
       }));
       setProfiles(migrated);
       // Сохраняем миграцию
@@ -87,13 +104,16 @@ const Dashboard = () => {
       setFolders(defaultFolders);
     }
 
-    // Проверяем установлен ли Camoufox
+    // Проверяем установлен ли Camoufox и нет ли новой версии
     (async () => {
       try {
-        const { invoke } = await import('@tauri-apps/api/core');
-        const installed = await invoke('check_camoufox_installed') as boolean;
-        setCamoufoxInstalled(installed);
-      } catch (e) {
+        const status = await getCamoufoxStatus();
+        setCamoufoxInstalled(status.installed);
+        setCamoufoxVersion(status.version);
+        if (status.installed && isCamoufoxAutoUpdateEnabled() && shouldCheckCamoufoxUpdate()) {
+          runCamoufoxUpdateCheck(false);
+        }
+      } catch {
         setCamoufoxInstalled(false);
       }
     })();
@@ -105,7 +125,7 @@ const Dashboard = () => {
     (async () => {
       try {
         const { listen } = await import('@tauri-apps/api/event');
-        unlisten = await listen<{ stage: string; percent: number; message: string; speed?: string }>('camoufox-progress', (event) => {
+        unlisten = await listen<{ stage: string; percent: number; message: string; speed?: string; version?: string }>('camoufox-progress', (event) => {
           setCamoufoxProgress(event.payload);
           if (event.payload.stage === 'done') {
             setCamoufoxDownloading(false);
@@ -188,17 +208,53 @@ const Dashboard = () => {
     setEditingProfile(null);
   };
 
-  // Скачивание Camoufox
-  const handleDownloadCamoufox = async () => {
+  // Скачивание Camoufox: install — первая установка, update — фоновое обновление
+  const startCamoufoxDownload = async (mode: 'install' | 'update', version?: string) => {
     if (camoufoxDownloading) return;
+    setCamoufoxMode(mode);
     setCamoufoxDownloading(true);
-    setCamoufoxProgress({ stage: 'download', percent: 0, message: t('profiles.downloading') });
+    setCamoufoxProgress({ stage: 'download', percent: 0, message: t('profiles.downloading'), version });
     try {
-      const { invoke } = await import('@tauri-apps/api/core');
-      await invoke('download_camoufox');
+      await downloadCamoufoxCmd(version);
+      const status = await getCamoufoxStatus();
+      setCamoufoxInstalled(status.installed);
+      setCamoufoxVersion(status.version);
+      setCamoufoxUpdate(null);
+      if (mode === 'update') {
+        toast.success(t('camoufox.updated', { version: status.version || '' }));
+      }
     } catch (err: any) {
-      toast.error(t('camoufox.installError'), { description: err?.message || String(err) });
+      toast.error(mode === 'update' ? t('camoufox.updateError') : t('camoufox.installError'), {
+        description: err?.message || String(err),
+      });
+    } finally {
       setCamoufoxDownloading(false);
+    }
+  };
+
+  const handleDownloadCamoufox = () => startCamoufoxDownload('install');
+
+  // Проверка новой версии Camoufox на GitHub; при автообновлении сразу качаем в фоне
+  const runCamoufoxUpdateCheck = async (manual: boolean) => {
+    setCamoufoxChecking(true);
+    try {
+      const info = await checkCamoufoxUpdate();
+      markCamoufoxUpdateCheck();
+      setCamoufoxUpdate(info);
+      if (info.updateAvailable) {
+        if (manual || isCamoufoxAutoUpdateEnabled()) {
+          toast.info(t('camoufox.updateStarting', { version: info.latestVersion, size: String(info.sizeMb) }));
+          await startCamoufoxDownload('update', info.latestVersion);
+        }
+      } else if (manual) {
+        toast.success(t('camoufox.upToDate', { version: info.latestVersion }));
+      }
+    } catch (err: any) {
+      if (manual) {
+        toast.error(t('camoufox.updateCheckFailed'), { description: err?.message || String(err) });
+      }
+    } finally {
+      setCamoufoxChecking(false);
     }
   };
 
@@ -537,8 +593,8 @@ const Dashboard = () => {
 
   return (
     <div className="flex h-screen bg-gray-50 relative">
-      {/* Camoufox Download Progress Overlay */}
-      {camoufoxDownloading && (
+      {/* Camoufox Download Progress Overlay — только первая установка */}
+      {camoufoxDownloading && camoufoxMode === 'install' && (
         <div className="fixed inset-0 z-[100] bg-black/70 backdrop-blur-md flex items-center justify-center">
           <div className="bg-gradient-to-b from-gray-900 to-gray-950 rounded-2xl shadow-2xl p-8 max-w-lg w-full mx-4 border border-orange-500/30">
             {/* Animated fox */}
@@ -616,6 +672,23 @@ const Dashboard = () => {
         </div>
       )}
       
+      {/* Camoufox background update banner — профили продолжают работать на старой версии */}
+      {camoufoxDownloading && camoufoxMode === 'update' && (
+        <div className="fixed top-0 left-0 right-0 z-[90] bg-gray-900 text-white py-1.5 px-4 flex items-center gap-3 text-sm">
+          <span>🦊</span>
+          <span>{t('camoufox.updatingBanner', { version: camoufoxProgress.version || camoufoxUpdate?.latestVersion || '' })}</span>
+          <div className="flex-1 max-w-xs bg-gray-700 rounded-full h-1.5 overflow-hidden">
+            <div className="h-1.5 bg-orange-500 transition-all duration-500" style={{ width: `${camoufoxProgress.percent}%` }} />
+          </div>
+          <span className="font-mono text-orange-400">{camoufoxProgress.percent}%</span>
+          {camoufoxProgress.stage === 'extract' ? (
+            <span className="text-xs text-gray-400">{t('camoufox.stageExtract')}</span>
+          ) : camoufoxProgress.speed ? (
+            <span className="text-xs text-gray-400 font-mono">{camoufoxProgress.speed}</span>
+          ) : null}
+        </div>
+      )}
+
       {/* Camoufox not installed banner */}
       {camoufoxInstalled === false && !camoufoxDownloading && (
         <div className="fixed top-0 left-0 right-0 z-[90] bg-orange-500 text-white py-2 px-4 flex items-center justify-center gap-3">
@@ -798,10 +871,10 @@ const Dashboard = () => {
                           size="sm"
                           className="w-full"
                           onClick={() => handleLaunchProfile(profile.id)}
-                          disabled={camoufoxDownloading}
+                          disabled={camoufoxDownloading && camoufoxMode === 'install'}
                         >
                           <Play className="w-4 h-4 mr-1" />
-                          {camoufoxDownloading ? t('profiles.downloading') : t('profiles.launchFox')}
+                          {camoufoxDownloading && camoufoxMode === 'install' ? t('profiles.downloading') : t('profiles.launchFox')}
                         </Button>
                         <div className="flex gap-2">
                           <Button
@@ -1217,8 +1290,8 @@ const Dashboard = () => {
                       <p className="text-sm text-gray-600">{t('settings.autoUpdateDesc')}</p>
                     </div>
                     <Checkbox
-                      checked={localStorage.getItem('aezakmi_auto_update') !== 'false'}
-                      onCheckedChange={(v) => localStorage.setItem('aezakmi_auto_update', String(v))}
+                      checked={appAutoUpdate}
+                      onCheckedChange={(v) => { const on = v === true; setAppAutoUpdate(on); setAutoUpdateEnabled(on); }}
                     />
                   </div>
                 </CardContent>
@@ -1259,6 +1332,52 @@ const Dashboard = () => {
                       onCheckedChange={(v) => localStorage.setItem('aezakmi_screenshot_protection', String(v))}
                     />
                   </div>
+                </CardContent>
+              </Card>
+
+              <Card className="bg-white/95 backdrop-blur-sm">
+                <CardHeader>
+                  <CardTitle>🦊 {t('camoufox.settingsTitle')}</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="space-y-1 text-sm">
+                    <p>
+                      <strong>{t('camoufox.installedVersion')}:</strong>{' '}
+                      {camoufoxInstalled ? (camoufoxVersion || t('camoufox.unknownVersion')) : t('camoufox.notInstalled')}
+                    </p>
+                    {camoufoxUpdate && (
+                      <p>
+                        <strong>{t('camoufox.latestVersion')}:</strong> {camoufoxUpdate.latestVersion}
+                        <span className={camoufoxUpdate.updateAvailable ? 'ml-2 text-amber-600' : 'ml-2 text-green-600'}>
+                          {camoufoxUpdate.updateAvailable ? t('camoufox.updateAvailable') : t('camoufox.upToDateShort')}
+                        </span>
+                      </p>
+                    )}
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="font-medium">{t('camoufox.autoUpdate')}</p>
+                      <p className="text-sm text-gray-600">{t('camoufox.autoUpdateDesc')}</p>
+                    </div>
+                    <Checkbox
+                      checked={camoufoxAutoUpdate}
+                      onCheckedChange={(v) => { const on = v === true; setCamoufoxAutoUpdate(on); setCamoufoxAutoUpdateEnabled(on); }}
+                    />
+                  </div>
+                  <Button
+                    variant="outline"
+                    className="w-full"
+                    disabled={camoufoxChecking || camoufoxDownloading}
+                    onClick={() => (camoufoxInstalled ? runCamoufoxUpdateCheck(true) : startCamoufoxDownload('install'))}
+                  >
+                    {camoufoxChecking
+                      ? t('camoufox.checking')
+                      : camoufoxDownloading
+                        ? t('camoufox.updatingBanner', { version: camoufoxProgress.version || '' })
+                        : camoufoxInstalled
+                          ? t('camoufox.checkUpdates')
+                          : t('camoufox.installButton')}
+                  </Button>
                 </CardContent>
               </Card>
 

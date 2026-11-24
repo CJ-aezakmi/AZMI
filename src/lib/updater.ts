@@ -2,7 +2,7 @@
 import { invoke } from '@tauri-apps/api/core';
 
 const GITHUB_REPO = 'CJ-aezakmi/AZMI';
-const CURRENT_VERSION = '3.3.1';
+const CURRENT_VERSION = '3.4.0';
 
 /**
  * Числовой id репозитория. Адрес вида /repositories/{id} не зависит от имени

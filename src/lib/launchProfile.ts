@@ -18,7 +18,8 @@ function loadSavedCards(): SavedCard[] | undefined {
 }
 
 /**
- * Генерация User-Agent на основе ОС и типа браузера
+ * Генерация User-Agent на основе ОС и типа браузера.
+ * Номер версии здесь условный: лаунчер подставляет версию установленного Camoufox.
  */
 function generateUserAgent(profile: Profile): string {
   const firefoxUAs: Record<string, string> = {
@@ -90,6 +91,12 @@ export async function launchProfile(profile: Profile) {
 
     // Формируем конфигурацию антидетекта
     const antidetectConfig = {
+      // Базовые флаги — для совместимости с типом Antidetect
+      canvasNoise: profile.antidetect.canvasNoise,
+      webglNoise: profile.antidetect.webglNoise,
+      audioNoise: profile.antidetect.audioNoise,
+      blockWebRTC: profile.antidetect.blockWebRTC,
+      spoofGeolocation: profile.antidetect.spoofGeolocation,
       canvas: {
         noise: profile.antidetect.canvasNoise,
         noiseLevel: profile.antidetect.canvas?.noiseLevel || 0.1,

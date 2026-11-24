@@ -41,6 +41,7 @@ export function PsbGenerateProxy({
   onProxiesGenerated: (proxies: Proxy[]) => void;
 }) {
   const { t } = useTranslation();
+  const product = getProduct(activeProduct);
 
   const [step, setStep] = useState<StepId>('geo');
 
@@ -305,16 +306,26 @@ export function PsbGenerateProxy({
                     label={t('psb.state')}
                     items={states}
                     value={state}
-                    onChange={setState}
+                    onChange={item => {
+                      setState(item);
+                      // Пул 3 не принимает регион и город одновременно
+                      if (item && product.exclusiveStateCity) setCity(null);
+                    }}
                     emptyLabel={t('psb.anyState')}
                   />
                   <GeoPicker
                     label={t('psb.city')}
                     items={cities}
                     value={city}
-                    onChange={setCity}
+                    onChange={item => {
+                      setCity(item);
+                      if (item && product.exclusiveStateCity) setState(null);
+                    }}
                     emptyLabel={t('psb.anyCity')}
                   />
+                  {product.exclusiveStateCity && states.length > 0 && cities.length > 0 && (
+                    <p className="text-xs text-gray-500">{t('psb.stateCityExclusive')}</p>
+                  )}
                   <GeoPicker
                     label={t('psb.asn')}
                     items={asns}
@@ -372,10 +383,17 @@ export function PsbGenerateProxy({
               <label className="text-sm font-medium">{t('psb.sessionTtl')}</label>
               <Input
                 type="number"
-                min={1}
+                min={product.stickyMinMinutes ?? 1}
                 max={1440}
                 value={sessionMinutes}
-                onChange={e => setSessionMinutes(Math.max(1, parseInt(e.target.value) || 30))}
+                onChange={e =>
+                  setSessionMinutes(
+                    Math.min(
+                      1440,
+                      Math.max(product.stickyMinMinutes ?? 1, parseInt(e.target.value) || 30),
+                    ),
+                  )
+                }
               />
               <p className="text-xs text-gray-500">{t('psb.sessionTtlHint')}</p>
             </div>

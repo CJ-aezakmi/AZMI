@@ -6,7 +6,7 @@ Antidetect browser with Camoufox engine (Firefox fork with native C++ fingerprin
 
 - **Frontend:** React 18, TypeScript, Tailwind CSS, shadcn/ui
 - **Backend:** Tauri 2 (Rust)
-- **Browser Engine:** Camoufox (downloads at first launch)
+- **Browser Engine:** Camoufox (downloads at first launch, auto-updates from GitHub releases)
 - **Proxy:** Firefox WebExtension (HTTP/HTTPS/SOCKS4/SOCKS5 with auth)
 
 ## Development

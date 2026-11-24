@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // ═══════════════════════════════════════════════════════════════════════
-// AEZAKMI Antidetect Browser Launcher v4.0.0
+// AEZAKMI Antidetect Browser Launcher v4.1.0
 // Engine: Camoufox (native antidetect Firefox fork)
 // Usage: node scripts/launch_playwright.cjs --payload=<base64-json>
 // ═══════════════════════════════════════════════════════════════════════
@@ -152,11 +152,15 @@ function removeProxyExtension(profileDir) {
 // ═══════════════════════════════════════════════════════════════════════
 // CAMOUFOX ENGINE — Native Antidetect Firefox Fork
 // Based on https://github.com/daijro/camoufox (DonutBrowser approach)
+//
+// Браузер скачивает и обновляет приложение (Rust, download_camoufox).
+// Раскладка %LOCALAPPDATA%/AEZAKMI Pro/camoufox/:
+//   version.json           — {"version": "159.0-beta.43", "exe": "159.0-beta.43/camoufox.exe"}
+//   <version>/camoufox.exe — папка на каждую версию
+// Старые сборки клали camoufox.exe прямо в корень (версия 135.0.1-beta.24).
 // ═══════════════════════════════════════════════════════════════════════
 
-const CAMOUFOX_VERSION = '135.0.1-beta.24';
-const CAMOUFOX_ZIP_NAME = `camoufox-${CAMOUFOX_VERSION}-win.x86_64.zip`;
-const CAMOUFOX_URL = `https://github.com/daijro/camoufox/releases/download/v${CAMOUFOX_VERSION}/${CAMOUFOX_ZIP_NAME}`;
+const CAMOUFOX_LEGACY_VERSION = '135.0.1-beta.24';
 
 function getCamoufoxDir() {
   const la = process.env.LOCALAPPDATA || '';
@@ -164,121 +168,43 @@ function getCamoufoxDir() {
   return path.join(appDir, 'camoufox');
 }
 
-function getCamoufoxExe() {
-  return path.join(getCamoufoxDir(), 'camoufox.exe');
+/** Major-версия Firefox из версии Camoufox: "159.0-beta.43" → 159 */
+function firefoxMajorFromVersion(version) {
+  const m = /^v?(\d+)/.exec(String(version || ''));
+  return m ? parseInt(m[1], 10) : 0;
 }
 
-// ─── HTTPS download with redirect following ───────────────────────────
-function httpsGet(url) {
-  return new Promise((resolve, reject) => {
-    const doRequest = (reqUrl, redirects) => {
-      if (redirects > 10) return reject(new Error('Too many redirects'));
-      const parsed = new URL(reqUrl);
-      const mod = parsed.protocol === 'https:' ? https : http;
-      const req = mod.get(reqUrl, { headers: { 'User-Agent': 'AEZAKMI/4.0' } }, (res) => {
-        if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
-          return doRequest(res.headers.location, redirects + 1);
-        }
-        if (res.statusCode !== 200) {
-          return reject(new Error(`HTTP ${res.statusCode} for ${reqUrl}`));
-        }
-        resolve(res);
-      });
-      req.on('error', reject);
-      req.setTimeout(600000, () => { req.destroy(); reject(new Error('Download timeout')); });
-    };
-    doRequest(url, 0);
-  });
-}
+/**
+ * Находит установленный Camoufox: сначала по version.json, потом legacy-exe
+ * в корне, потом поиск по подпапкам. Возвращает { exe, version, major }.
+ */
+function resolveCamoufox() {
+  const dir = getCamoufoxDir();
 
-async function downloadFile(url, destPath) {
-  log(`[CAMOUFOX] Скачивание: ${url}`);
-  logToFile(`Downloading: ${url}`);
-  const res = await httpsGet(url);
-  const totalSize = parseInt(res.headers['content-length'] || '0');
-  let downloaded = 0;
-  let lastPct = -1;
-
-  return new Promise((resolve, reject) => {
-    const fileStream = fs.createWriteStream(destPath);
-    res.on('data', (chunk) => {
-      downloaded += chunk.length;
-      if (totalSize > 0) {
-        const pct = Math.floor(downloaded / totalSize * 100);
-        if (pct !== lastPct && pct % 10 === 0) {
-          log(`[CAMOUFOX] Прогресс: ${pct}% (${Math.floor(downloaded / 1024 / 1024)} MB)`);
-          logToFile(`Download progress: ${pct}%`);
-          lastPct = pct;
-        }
-      }
-    });
-    res.pipe(fileStream);
-    fileStream.on('finish', () => {
-      fileStream.close();
-      log(`[CAMOUFOX] Скачано: ${Math.floor(downloaded / 1024 / 1024)} MB`);
-      resolve();
-    });
-    fileStream.on('error', reject);
-    res.on('error', reject);
-  });
-}
-
-async function ensureCamoufoxInstalled() {
-  const exe = getCamoufoxExe();
-  if (fs.existsSync(exe)) {
-    log('[CAMOUFOX] Бинарник найден:', exe);
-    return;
-  }
-
-  log('[CAMOUFOX] Camoufox не найден, начинаем установку...');
-  logToFile('Camoufox not found, starting installation');
-
-  const camoufoxDir = getCamoufoxDir();
-  fs.mkdirSync(camoufoxDir, { recursive: true });
-
-  const zipPath = path.join(camoufoxDir, CAMOUFOX_ZIP_NAME);
-
-  // Скачиваем zip с GitHub
-  await downloadFile(CAMOUFOX_URL, zipPath);
-
-  // Распаковываем через PowerShell
-  log('[CAMOUFOX] Распаковка...');
-  logToFile('Extracting Camoufox...');
   try {
-    execSync(
-      `powershell -NoProfile -Command "Expand-Archive -Path '${zipPath}' -DestinationPath '${camoufoxDir}' -Force"`,
-      { timeout: 300000, stdio: isDev ? 'inherit' : 'pipe' }
-    );
-  } catch (e) {
-    throw new Error(`Ошибка распаковки Camoufox: ${e.message}`);
-  }
-
-  // Удаляем zip
-  try { fs.unlinkSync(zipPath); } catch (e) {}
-
-  // Проверяем что exe появился
-  if (!fs.existsSync(exe)) {
-    // Может быть вложенная папка после распаковки
-    const entries = fs.readdirSync(camoufoxDir);
-    log('[CAMOUFOX] Содержимое после распаковки:', entries.join(', '));
-    // Ищем camoufox.exe рекурсивно
-    const found = findExecutable(camoufoxDir, 'camoufox.exe');
-    if (found) {
-      log('[CAMOUFOX] Найден exe в подпапке:', found);
-      logToFile(`Found exe in subdirectory: ${found}`);
-    } else {
-      throw new Error(`camoufox.exe не найден после распаковки в ${camoufoxDir}. Файлы: ${entries.join(', ')}`);
+    const manifest = JSON.parse(fs.readFileSync(path.join(dir, 'version.json'), 'utf8'));
+    if (manifest && manifest.exe) {
+      const exe = path.join(dir, manifest.exe);
+      if (fs.existsSync(exe)) {
+        return { exe, version: manifest.version || '', major: firefoxMajorFromVersion(manifest.version) };
+      }
     }
+  } catch (e) { /* version.json нет — старая раскладка */ }
+
+  const legacyExe = path.join(dir, 'camoufox.exe');
+  if (fs.existsSync(legacyExe)) {
+    return { exe: legacyExe, version: CAMOUFOX_LEGACY_VERSION, major: firefoxMajorFromVersion(CAMOUFOX_LEGACY_VERSION) };
   }
 
-  // Сохраняем версию
-  fs.writeFileSync(
-    path.join(camoufoxDir, 'version.json'),
-    JSON.stringify({ version: CAMOUFOX_VERSION, installed: new Date().toISOString() })
-  );
+  const found = findExecutable(dir, 'camoufox.exe');
+  if (found) {
+    // Версия неизвестна — берём из имени папки, если она похожа на версию
+    const folder = path.basename(path.dirname(found));
+    const major = firefoxMajorFromVersion(folder);
+    return { exe: found, version: major ? folder : '', major };
+  }
 
-  log('[CAMOUFOX] Установлен успешно:', exe);
-  logToFile('Camoufox installed successfully');
+  throw new Error('Camoufox не установлен. Откройте AEZAKMI и нажмите «Установить» — браузер скачается автоматически.');
 }
 
 function findExecutable(dir, name) {
@@ -410,8 +336,9 @@ function pickWebGL(osName) {
   return presets[Math.floor(Math.random() * presets.length)];
 }
 
-function generateFirefoxUA(osName) {
-  const ffVersion = '135.0';
+/** Версия Firefox в UA должна совпадать с установленным Camoufox */
+function generateFirefoxUA(osName, major) {
+  const ffVersion = `${major || 135}.0`;
   const platforms = {
     windows: `Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:${ffVersion}) Gecko/20100101 Firefox/${ffVersion}`,
     macos: `Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:${ffVersion}) Gecko/20100101 Firefox/${ffVersion}`,
@@ -420,13 +347,38 @@ function generateFirefoxUA(osName) {
   return platforms[osName] || platforms.windows;
 }
 
-function generateFingerprintConfig(payload) {
+/**
+ * Подгоняет версию в любом Firefox-UA (включая Android) под установленный
+ * браузер: UA из профиля мог быть сохранён под старую версию.
+ */
+function normalizeFirefoxUA(ua, major) {
+  if (!ua || !major) return ua;
+  if (!/Firefox\//.test(ua)) return ua;
+  return ua
+    .replace(/rv:\d+(\.\d+)?/, `rv:${major}.0`)
+    .replace(/Gecko\/\d+\.\d+/, `Gecko/${major}.0`)
+    .replace(/Firefox\/\d+(\.\d+)?/, `Firefox/${major}.0`);
+}
+
+function acceptLanguageFor(locale) {
+  const langBase = locale.split('-')[0];
+  if (locale.startsWith('en')) return 'en-US,en;q=0.5';
+  return `${locale},${langBase};q=0.8,en-US;q=0.5,en;q=0.3`;
+}
+
+/**
+ * Конфиг отпечатка по списку свойств Camoufox (browser/settings/properties.json).
+ * Ключи, удалённые в 156–159 (canvas:aaOffset, fonts:spacing_seed, navigator.languages,
+ * window.history.length, disableTheming, строчное webgl:*), больше не передаём.
+ */
+function generateFingerprintConfig(payload, browser) {
   const osName = (payload.os || 'windows').toLowerCase();
   const screen = payload.screen || pickWeightedScreen();
   const locale = payload.locale || 'en-US';
-  const langBase = locale.split('-')[0];
+  const [localeLang, localeRegion] = locale.split('-');
   const ad = payload.antidetect || {};
   const webgl = pickWebGL(osName);
+  const major = browser && browser.major;
 
   // Taskbar offset for availHeight
   const taskbarHeight = osName === 'windows' ? 40 : (osName === 'macos' ? 25 : 30);
@@ -438,50 +390,69 @@ function generateFingerprintConfig(payload) {
   const innerWidth = outerWidth - 17; // scrollbar
   const innerHeight = outerHeight - 71; // toolbar + tabs
 
+  const platform = osName === 'windows' ? 'Win32' : (osName === 'macos' ? 'MacIntel' : 'Linux x86_64');
+  const oscpu = osName === 'windows' ? 'Windows NT 10.0; Win64; x64' : (osName === 'macos' ? 'Intel Mac OS X 10.15' : 'Linux x86_64');
+  const appVersion = osName === 'windows' ? '5.0 (Windows)' : (osName === 'macos' ? '5.0 (Macintosh)' : '5.0 (X11)');
+
+  const userAgent = normalizeFirefoxUA(payload.userAgent, major) || generateFirefoxUA(osName, major);
+
   const config = {
     // Navigator
-    'navigator.userAgent': payload.userAgent || generateFirefoxUA(osName),
-    'navigator.platform': osName === 'windows' ? 'Win32' : (osName === 'macos' ? 'MacIntel' : 'Linux x86_64'),
+    'navigator.userAgent': userAgent,
+    'navigator.platform': platform,
+    'navigator.oscpu': oscpu,
+    'navigator.appVersion': appVersion,
     'navigator.hardwareConcurrency': ad.hardwareConcurrency || [4, 6, 8, 12, 16][Math.floor(Math.random() * 5)],
     'navigator.language': locale,
-    'navigator.languages': locale.startsWith('en')
-      ? ['en-US', 'en']
-      : [locale, langBase, 'en-US', 'en'],
+
+    // HTTP-заголовки в тон navigator
+    'headers.User-Agent': userAgent,
+    'headers.Accept-Language': acceptLanguageFor(locale),
 
     // Screen
     'screen.width': screen.width,
     'screen.height': screen.height,
     'screen.availWidth': screen.width,
     'screen.availHeight': availHeight,
+    'screen.availLeft': 0,
+    'screen.availTop': 0,
     'screen.colorDepth': 24,
     'screen.pixelDepth': 24,
-    'screen.outerWidth': outerWidth,
-    'screen.outerHeight': outerHeight,
-    'screen.innerWidth': innerWidth,
-    'screen.innerHeight': innerHeight,
 
     // Window
+    'window.outerWidth': outerWidth,
+    'window.outerHeight': outerHeight,
+    'window.innerWidth': innerWidth,
+    'window.innerHeight': innerHeight,
     'window.screenX': 0,
     'window.screenY': 0,
-    'window.history.length': Math.floor(Math.random() * 5) + 1,
+    'window.devicePixelRatio': 1,
+
+    // Locale
+    'locale:language': localeLang,
+    'locale:region': localeRegion || undefined,
 
     // Fonts
     'fonts': getFontsForOS(osName),
-    'fonts:spacing_seed': Math.floor(Math.random() * 1073741824),
 
-    // Canvas anti-fingerprinting
-    'canvas:aaOffset': Math.floor(Math.random() * 101) - 50,
-    'canvas:aaCapOffset': true,
-
-    // Theme
-    'disableTheming': true,
+    // Service
     'showcursor': false,
   };
 
+  // Timezone — дублирует intl.timezone.override из user.js, но через конфиг надёжнее
+  if (payload.timezoneId) {
+    config['timezone'] = payload.timezoneId;
+  }
+
   // WebGL
   if (ad.webgl?.noise !== false) {
-    config['webgl:vendor'] = webgl.vendor;
-    config['webgl:renderer'] = webgl.renderer;
+    config['webGl:vendor'] = webgl.vendor;
+    config['webGl:renderer'] = webgl.renderer;
+  }
+
+  // Пустые значения Camoufox не принимает
+  for (const key of Object.keys(config)) {
+    if (config[key] === undefined || config[key] === null || config[key] === '') delete config[key];
   }
 
   return config;
@@ -554,7 +525,7 @@ function removeCookieInjector(profileDir) {
 // ─── MOBILE EMULATION ─────────────────────────────────────────────────
 // Applies mobile fingerprint overrides to Camoufox config
 
-function applyMobileEmulation(config, mobileEmulation) {
+function applyMobileEmulation(config, mobileEmulation, major) {
   if (!mobileEmulation || !mobileEmulation.enabled) return;
 
   const width = mobileEmulation.width || 390;
@@ -566,10 +537,12 @@ function applyMobileEmulation(config, mobileEmulation) {
   config['screen.height'] = height;
   config['screen.availWidth'] = width;
   config['screen.availHeight'] = height;
-  config['screen.outerWidth'] = width;
-  config['screen.outerHeight'] = height;
-  config['screen.innerWidth'] = width;
-  config['screen.innerHeight'] = height - 56; // mobile browser chrome
+  config['screen.availLeft'] = 0;
+  config['screen.availTop'] = 0;
+  config['window.outerWidth'] = width;
+  config['window.outerHeight'] = height;
+  config['window.innerWidth'] = width;
+  config['window.innerHeight'] = height - 56; // mobile browser chrome
   config['screen.colorDepth'] = 24;
   config['screen.pixelDepth'] = 24;
 
@@ -583,14 +556,16 @@ function applyMobileEmulation(config, mobileEmulation) {
 
   // Mobile platform
   config['navigator.platform'] = 'Linux armv81';
+  config['navigator.oscpu'] = 'Linux armv81';
+  config['navigator.appVersion'] = '5.0 (Android 14)';
 
-  // Mobile user agent
-  if (mobileEmulation.userAgent) {
-    config['navigator.userAgent'] = mobileEmulation.userAgent;
-  } else {
-    const ffVersion = '135.0';
-    config['navigator.userAgent'] = 'Mozilla/5.0 (Android 14; Mobile; rv:' + ffVersion + ') Gecko/' + ffVersion + ' Firefox/' + ffVersion;
-  }
+  // Mobile user agent — версия Firefox подгоняется под установленный браузер
+  const ffVersion = `${major || 135}.0`;
+  const mobileUA = mobileEmulation.userAgent
+    ? normalizeFirefoxUA(mobileEmulation.userAgent, major)
+    : 'Mozilla/5.0 (Android 14; Mobile; rv:' + ffVersion + ') Gecko/' + ffVersion + ' Firefox/' + ffVersion;
+  config['navigator.userAgent'] = mobileUA;
+  config['headers.User-Agent'] = mobileUA;
 
   log('[CAMOUFOX] Mobile emulation:', width + 'x' + height, '@' + dpr + 'x, touch=' + (mobileEmulation.hasTouch !== false));
 }
@@ -1066,19 +1041,11 @@ async function launchCamoufox(payload) {
   log('[CAMOUFOX] Запуск Camoufox (native antidetect)');
   logToFile('Launching Camoufox engine');
 
-  // 1. Ensure binary installed
-  await ensureCamoufoxInstalled();
-
-  // Resolve actual exe path (might be in subfolder)
-  let exe = getCamoufoxExe();
-  if (!fs.existsSync(exe)) {
-    const found = findExecutable(getCamoufoxDir(), 'camoufox.exe');
-    if (found) {
-      exe = found;
-    } else {
-      throw new Error(`camoufox.exe не найден в ${getCamoufoxDir()}`);
-    }
-  }
+  // 1. Установленный браузер (скачивает и обновляет приложение, не лаунчер)
+  const browser = resolveCamoufox();
+  const exe = browser.exe;
+  log('[CAMOUFOX] Версия:', browser.version || 'неизвестна', '→', exe);
+  logToFile(`Camoufox ${browser.version || 'unknown'}: ${exe}`);
 
   // 2. Resolve profile dir
   let profileDir = payload.profileDir || `aezakmi-profile-${Date.now()}`;
@@ -1093,17 +1060,23 @@ async function launchCamoufox(payload) {
   log('[CAMOUFOX] Профиль:', profileDir);
 
   // 3. Generate fingerprint config
-  const fpConfig = generateFingerprintConfig(payload);
+  const fpConfig = generateFingerprintConfig(payload, browser);
 
   // 3.5. Apply mobile emulation overrides
-  applyMobileEmulation(fpConfig, payload.mobileEmulation);
+  applyMobileEmulation(fpConfig, payload.mobileEmulation, browser.major);
+
+  // --dry-run: показать конфиг и выйти, браузер не запускать
+  if (payload.__dryRun) {
+    console.log(JSON.stringify({ exe, version: browser.version, config: fpConfig }, null, 2));
+    return;
+  }
 
   const camoufoxEnv = configToEnvVars(fpConfig);
   log('[CAMOUFOX] Fingerprint:', JSON.stringify({
     ua: fpConfig['navigator.userAgent'].substring(0, 60) + '...',
     screen: `${fpConfig['screen.width']}x${fpConfig['screen.height']}`,
     locale: fpConfig['navigator.language'],
-    webgl: fpConfig['webgl:renderer'] ? fpConfig['webgl:renderer'].substring(0, 40) : 'default',
+    webgl: fpConfig['webGl:renderer'] ? fpConfig['webGl:renderer'].substring(0, 40) : 'default',
   }));
 
   // 4. Setup proxy — use Firefox extension for auth, user.js prefs otherwise
@@ -1243,11 +1216,12 @@ async function main() {
   try {
     const argv = process.argv.slice(2);
     if (argv.includes('--help') || argv.includes('-h')) {
-      log('AEZAKMI Launcher v4.0.0 (Camoufox antidetect)');
+      log('AEZAKMI Launcher v4.1.0 (Camoufox antidetect)');
       log('Usage: node launch_playwright.cjs --payload=<base64-json>');
       process.exit(0);
     }
-    if (argv.includes('--dry-run')) {
+    const dryRun = argv.includes('--dry-run');
+    if (dryRun && !argv.some(a => a.startsWith('--payload'))) {
       log('Dry-run OK');
       process.exit(0);
     }
@@ -1271,6 +1245,7 @@ async function main() {
     }
 
     const payload = JSON.parse(json);
+    if (dryRun) payload.__dryRun = true;
 
     log('[LAUNCHER] ═══════════════════════════════════════');
     log('[LAUNCHER] Профиль:', payload.profileDir);

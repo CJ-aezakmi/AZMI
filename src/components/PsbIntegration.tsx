@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { ExternalLink, AlertCircle, Loader2, LogOut, Gauge } from 'lucide-react';
+import { ExternalLink, AlertCircle, Loader2, LogOut, Gauge, ShoppingCart } from 'lucide-react';
 import {
   PsbClient,
   savePsbToken,
@@ -19,6 +19,7 @@ import {
 } from '@/lib/psb-api';
 import PsbGenerateProxy from './PsbGenerateProxy';
 import PsbSetupProduct from './PsbSetupProduct';
+import PsbStaticProxies from './PsbStaticProxies';
 import { PsbLogo, PSB_TEAL } from './PsbLogo';
 import type { Proxy } from '@/types';
 import { toast } from 'sonner';
@@ -42,6 +43,10 @@ const PsbIntegration = ({ open, onClose, onProxiesImported }: PsbIntegrationProp
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
+  /** Пулы по трафику, покупка статичных IP, купленные статичные прокси */
+  const [tab, setTab] = useState<'pools' | 'static' | 'mine'>('pools');
+  /** Панель докупки трафика поверх генератора */
+  const [topUp, setTopUp] = useState(false);
 
   const authenticate = useCallback(
     async (value: string) => {
@@ -228,8 +233,40 @@ const PsbIntegration = ({ open, onClose, onProxiesImported }: PsbIntegrationProp
           </Button>
         </div>
 
+        {/* Вкладки: пулы по трафику / покупка статичных IP / мои статичные прокси */}
+        <div className="flex gap-1 border-b">
+          {(['pools', 'static', 'mine'] as const).map(item => (
+            <button
+              key={item}
+              onClick={() => setTab(item)}
+              className={`px-4 py-2 border-b-2 text-sm font-medium transition-colors ${
+                tab === item
+                  ? 'border-[#5AA4AD] text-[#3d7a82] dark:text-[#70BCBA]'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'
+              }`}
+            >
+              {item === 'pools'
+                ? t('psb.tabPools')
+                : item === 'static'
+                  ? t('psb.tabStatic')
+                  : t('psb.tabMine')}
+            </button>
+          ))}
+        </div>
+
         <div className="flex-1 overflow-y-auto pr-1">
-          {client && needsSetup && (
+          {client && tab === 'static' && (
+            <PsbStaticProxies
+              client={client}
+              view="buy"
+              onProxiesImported={handleGenerated}
+              onBought={() => setTab('mine')}
+            />
+          )}
+          {client && tab === 'mine' && (
+            <PsbStaticProxies client={client} view="list" onProxiesImported={handleGenerated} />
+          )}
+          {client && tab === 'pools' && needsSetup && (
             <PsbSetupProduct
               client={client}
               onReady={() => {
@@ -238,15 +275,40 @@ const PsbIntegration = ({ open, onClose, onProxiesImported }: PsbIntegrationProp
               }}
             />
           )}
-          {client && !needsSetup && current && (
-            <PsbGenerateProxy
-              client={client}
-              available={available}
-              activeProduct={activeProduct}
-              poolData={current.data}
-              onProductChange={setActiveProduct}
-              onProxiesGenerated={handleGenerated}
-            />
+          {client && tab === 'pools' && !needsSetup && current && (
+            <div className="space-y-4">
+              <div className="flex justify-end">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setTopUp(value => !value)}
+                  style={{ borderColor: `${PSB_TEAL}80` }}
+                >
+                  <ShoppingCart className="w-3.5 h-3.5 mr-1.5" />
+                  {topUp ? t('psb.topUpClose') : t('psb.topUpTraffic')}
+                </Button>
+              </div>
+              {topUp ? (
+                <PsbSetupProduct
+                  client={client}
+                  mode="topup"
+                  initialType={activeProduct}
+                  onReady={() => {
+                    setTopUp(false);
+                    refreshActive();
+                  }}
+                />
+              ) : (
+                <PsbGenerateProxy
+                  client={client}
+                  available={available}
+                  activeProduct={activeProduct}
+                  poolData={current.data}
+                  onProductChange={setActiveProduct}
+                  onProxiesGenerated={handleGenerated}
+                />
+              )}
+            </div>
           )}
         </div>
       </DialogContent>

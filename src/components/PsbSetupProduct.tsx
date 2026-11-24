@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { Button } from './ui/button';
+import { Input } from './ui/input';
 import { Alert, AlertDescription } from './ui/alert';
 import { Loader2, ShoppingCart, AlertCircle, Server, Smartphone, Building2 } from 'lucide-react';
 import {
@@ -13,33 +14,47 @@ import { toast } from 'sonner';
 import { useTranslation } from '@/lib/i18n';
 
 const TYPE_ICONS: Record<string, typeof Server> = {
+  'residential-proxy-pool-3': Server,
+  'residential-proxy-pool-2': Server,
   'residential-proxy-pool-1': Server,
   'mobile-proxy-pool-1': Smartphone,
   'datacenter-proxy-pool-1': Building2,
 };
 
 /**
- * Первичное подключение продукта PSB.
+ * Покупка трафика PSB.
  *
- * У PSB все данные привязаны к суб-пользователю, а тот появляется только после
- * покупки трафика: на пустом аккаунте и «Get Data», и создание суб-пользователя
- * отвечают 404. Поэтому здесь единый шаг — купить тариф и сразу получить
- * рабочий суб-аккаунт.
+ * `mode="setup"` — первичное подключение: у PSB все данные привязаны к
+ * суб-пользователю, а тот появляется только после покупки трафика, поэтому
+ * покупка и подключение — один шаг.
+ * `mode="topup"` — докупить трафик уже подключённому продукту.
+ *
+ * Тариф — это пакет (1, 10, 100 ГБ…) со своей ценой за гигабайт; количество
+ * пакетов выбирает пользователь (`amount` в API), итог — пакет × количество.
  */
 export function PsbSetupProduct({
   client,
   onReady,
+  mode = 'setup',
+  initialType,
 }: {
   client: PsbClient;
   onReady: () => void;
+  mode?: 'setup' | 'topup';
+  /** Продукт, выбранный по умолчанию (в режиме докупки — активный) */
+  initialType?: PsbProductId;
 }) {
   const { t } = useTranslation();
   const [products, setProducts] = useState<PsbShopProduct[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
-  const [productType, setProductType] = useState<PsbProductId>('residential-proxy-pool-1');
+  // Пул 3 — текущий основной тариф PSB; если его нет в каталоге, берём первый доступный
+  const [productType, setProductType] = useState<PsbProductId>(
+    initialType || 'residential-proxy-pool-3',
+  );
   const [selected, setSelected] = useState<PsbShopProduct | null>(null);
+  const [units, setUnits] = useState(1);
   const [buying, setBuying] = useState(false);
 
   useEffect(() => {
@@ -49,8 +64,13 @@ export function PsbSetupProduct({
       .then(list => {
         if (cancelled) return;
         setProducts(list);
-        const first = list.find(p => p.productType === productType);
-        if (first) setSelected(first);
+        const first =
+          list.find(p => p.productType === productType) ||
+          PSB_PRODUCTS.map(p => list.find(item => item.productType === p.id)).find(Boolean);
+        if (first) {
+          setProductType(first.productType);
+          setSelected(first);
+        }
       })
       .catch(err => {
         if (!cancelled) setError(err?.message || t('psb.shopError'));
@@ -79,23 +99,30 @@ export function PsbSetupProduct({
     setSelected(products.find(p => p.productType === next) || null);
   };
 
+  const totalGb = selected ? selected.trafficGb * units : 0;
+  const totalPrice = selected ? selected.price * units : 0;
+
   const handleBuy = async () => {
     if (!selected) return;
     setBuying(true);
     setError('');
     try {
-      const { subUser, trafficMoved } = await client.provisionProduct(
-        productType,
-        selected.id,
-        1,
-        selected.trafficGb,
-      );
-
-      toast.success(
-        trafficMoved
-          ? t('psb.provisionSuccess', { gb: String(selected.trafficGb), id: String(subUser.id) })
-          : t('psb.provisionPartial', { id: String(subUser.id) }),
-      );
+      if (mode === 'topup') {
+        await client.buyProduct(selected.id, units);
+        toast.success(t('psb.topUpSuccess', { gb: String(totalGb) }));
+      } else {
+        const { subUser, trafficMoved } = await client.provisionProduct(
+          productType,
+          selected.id,
+          units,
+          selected.trafficGb,
+        );
+        toast.success(
+          trafficMoved
+            ? t('psb.provisionSuccess', { gb: String(totalGb), id: String(subUser.id) })
+            : t('psb.provisionPartial', { id: String(subUser.id) }),
+        );
+      }
       onReady();
     } catch (err: any) {
       setError(err?.message || t('psb.provisionError'));
@@ -120,15 +147,19 @@ export function PsbSetupProduct({
       >
         <AlertCircle className="w-5 h-5 text-[#3d7a82] flex-shrink-0 mt-0.5" />
         <div className="text-sm">
-          <div className="font-semibold">{t('psb.setupTitle')}</div>
-          <div className="text-xs text-gray-600 dark:text-gray-400 mt-0.5">{t('psb.setupHint')}</div>
+          <div className="font-semibold">
+            {mode === 'topup' ? t('psb.topUpTitle') : t('psb.setupTitle')}
+          </div>
+          <div className="text-xs text-gray-600 dark:text-gray-400 mt-0.5">
+            {mode === 'topup' ? t('psb.topUpHint') : t('psb.setupHint')}
+          </div>
         </div>
       </div>
 
       {/* Тип прокси */}
       <div className="space-y-2">
         <label className="text-sm font-medium">{t('psb.setupType')}</label>
-        <div className="grid grid-cols-3 gap-2">
+        <div className={`grid gap-2 ${availableTypes.length > 3 ? 'grid-cols-2' : 'grid-cols-3'}`}>
           {availableTypes.map(item => {
             const Icon = TYPE_ICONS[item.id] || Server;
             const cheapest = products
@@ -160,7 +191,7 @@ export function PsbSetupProduct({
         </div>
       </div>
 
-      {/* Тарифы */}
+      {/* Тарифы: чем больше пакет, тем дешевле гигабайт */}
       <div className="space-y-2">
         <label className="text-sm font-medium">{t('psb.setupPackage')}</label>
         <div className="grid grid-cols-2 gap-2">
@@ -189,6 +220,29 @@ export function PsbSetupProduct({
         </div>
       </div>
 
+      {/* Количество пакетов → итоговые гигабайты */}
+      {selected && (
+        <div className="flex items-end gap-3">
+          <div className="space-y-2 w-40">
+            <label className="text-sm font-medium">{t('psb.setupUnits')}</label>
+            <Input
+              type="number"
+              min={1}
+              max={1000}
+              value={units}
+              onChange={e => setUnits(Math.min(1000, Math.max(1, parseInt(e.target.value) || 1)))}
+            />
+          </div>
+          <div className="flex-1 p-3 rounded-lg bg-gray-50 dark:bg-gray-800/60 text-sm">
+            <div className="text-xs text-gray-500">{t('psb.setupTotal')}</div>
+            <div className="font-semibold">
+              {units} × {selected.trafficGb} GB = {totalGb} GB ·{' '}
+              <span className="text-[#2A323D] dark:text-[#70BCBA]">${totalPrice.toFixed(2)}</span>
+            </div>
+          </div>
+        </div>
+      )}
+
       {error && (
         <Alert variant="destructive">
           <AlertCircle className="h-4 w-4" />
@@ -210,7 +264,9 @@ export function PsbSetupProduct({
           <>
             <ShoppingCart className="w-4 h-4 mr-2" />
             {selected
-              ? t('psb.buyAndCreate', { gb: String(selected.trafficGb), price: String(selected.price) })
+              ? mode === 'topup'
+                ? t('psb.topUpButton', { gb: String(totalGb), price: totalPrice.toFixed(2) })
+                : t('psb.buyAndCreate', { gb: String(totalGb), price: totalPrice.toFixed(2) })
               : t('psb.setupPackage')}
           </>
         )}
